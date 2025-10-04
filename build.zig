@@ -4,6 +4,14 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Get raylib dependency
+    const raylib_dep = b.dependency("raylib_zig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const raylib = raylib_dep.module("raylib");
+    const raylib_artifact = raylib_dep.artifact("raylib");
+
     // Create the rlOpenXR library module
     const rlOpenXR_mod = b.addModule("rlOpenXR", .{
         .root_source_file = b.path("src/rlOpenXR.zig"),
@@ -20,6 +28,10 @@ pub fn build(b: *std.Build) void {
     // Link C library (required for OpenXR and raylib)
     rlOpenXR.linkLibC();
 
+    // Link raylib
+    rlOpenXR.linkLibrary(raylib_artifact);
+    rlOpenXR_mod.addImport("raylib", raylib);
+
     // Link system libraries based on target platform
     if (target.result.os.tag == .windows) {
         rlOpenXR.linkSystemLibrary("opengl32");
@@ -32,7 +44,6 @@ pub fn build(b: *std.Build) void {
     // TODO: Add Android support when targeting Android
     // Note: Android linking will be added when we properly set up Android target
 
-    // TODO: Link raylib (will need to fetch or provide as dependency)
     // TODO: Link OpenXR SDK (will need to fetch or provide as dependency)
 
     // Install the library
@@ -51,6 +62,7 @@ pub fn build(b: *std.Build) void {
         .root_module = hello_vr_mod,
     });
     hello_vr_exe.linkLibrary(rlOpenXR);
+    hello_vr_exe.linkLibrary(raylib_artifact);
 
     const install_hello_vr = b.addInstallArtifact(hello_vr_exe, .{});
 

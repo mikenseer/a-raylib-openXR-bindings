@@ -5,7 +5,10 @@
     .fingerprint = 0xd06d30a0504deced,
 
     .dependencies = .{
-        // Dependencies will be added here for raylib and OpenXR SDK
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#1e257d1738b4ee25fe76ea1b1bd8b5ea2bf639c4",
+            .hash = "raylib_zig-5.6.0-dev-KE8RECxEBQDwM9vp3RY9uvOduewuez61dojPyNO_L9Ph",
+        },
     },
 
     .paths = .{
