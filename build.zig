@@ -12,6 +12,12 @@ pub fn build(b: *std.Build) void {
     const raylib = raylib_dep.module("raylib");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
+    // OpenXR headers will be provided by system installation or SDK
+    // Users need to install OpenXR SDK and ensure headers are in include path
+    // Windows: https://github.com/KhronosGroup/OpenXR-SDK/releases
+    // Linux: Install openxr-dev package or build from source
+    // Android: Meta OpenXR Mobile SDK or build from source
+
     // Create the rlOpenXR library module
     const rlOpenXR_mod = b.addModule("rlOpenXR", .{
         .root_source_file = b.path("src/rlOpenXR.zig"),
@@ -41,10 +47,20 @@ pub fn build(b: *std.Build) void {
         rlOpenXR.linkSystemLibrary("GL");
         rlOpenXR.linkSystemLibrary("X11");
     }
+    // Link OpenXR loader (system library - needs OpenXR runtime installed)
+    // Note: On Windows, install SteamVR or Oculus runtime
+    // On Linux, install Monado or SteamVR
+    // The openxr-zig module provides headers, but we still need the loader
+    if (target.result.os.tag == .windows) {
+        // Windows: Try to link openxr_loader (may need manual SDK installation)
+        // rlOpenXR.linkSystemLibrary("openxr_loader");
+    } else if (target.result.os.tag == .linux) {
+        // Linux: Link system OpenXR loader
+        // rlOpenXR.linkSystemLibrary("openxr_loader");
+    }
+
     // TODO: Add Android support when targeting Android
     // Note: Android linking will be added when we properly set up Android target
-
-    // TODO: Link OpenXR SDK (will need to fetch or provide as dependency)
 
     // Install the library
     b.installArtifact(rlOpenXR);
