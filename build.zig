@@ -5,11 +5,16 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Create the rlOpenXR library module
-    const rlOpenXR = b.addStaticLibrary(.{
-        .name = "rlOpenXR",
+    const rlOpenXR_mod = b.addModule("rlOpenXR", .{
         .root_source_file = b.path("src/rlOpenXR.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    const rlOpenXR = b.addLibrary(.{
+        .linkage = .static,
+        .name = "rlOpenXR",
+        .root_module = rlOpenXR_mod,
     });
 
     // Link C library (required for OpenXR and raylib)
@@ -23,12 +28,9 @@ pub fn build(b: *std.Build) void {
     } else if (target.result.os.tag == .linux) {
         rlOpenXR.linkSystemLibrary("GL");
         rlOpenXR.linkSystemLibrary("X11");
-    } else if (target.result.os.tag == .android) {
-        rlOpenXR.linkSystemLibrary("EGL");
-        rlOpenXR.linkSystemLibrary("GLESv3");
-        rlOpenXR.linkSystemLibrary("android");
-        rlOpenXR.linkSystemLibrary("log");
     }
+    // TODO: Add Android support when targeting Android
+    // Note: Android linking will be added when we properly set up Android target
 
     // TODO: Link raylib (will need to fetch or provide as dependency)
     // TODO: Link OpenXR SDK (will need to fetch or provide as dependency)
@@ -36,21 +38,18 @@ pub fn build(b: *std.Build) void {
     // Install the library
     b.installArtifact(rlOpenXR);
 
-    // Create a module for users to import
-    const rlOpenXR_module = b.addModule("rlOpenXR", .{
-        .root_source_file = b.path("src/rlOpenXR.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     // Build examples
-    const hello_vr_exe = b.addExecutable(.{
-        .name = "hello_vr",
+    const hello_vr_mod = b.createModule(.{
         .root_source_file = b.path("examples/hello_vr.zig"),
         .target = target,
         .optimize = optimize,
     });
-    hello_vr_exe.root_module.addImport("rlOpenXR", rlOpenXR_module);
+    hello_vr_mod.addImport("rlOpenXR", rlOpenXR_mod);
+
+    const hello_vr_exe = b.addExecutable(.{
+        .name = "hello_vr",
+        .root_module = hello_vr_mod,
+    });
     hello_vr_exe.linkLibrary(rlOpenXR);
 
     const install_hello_vr = b.addInstallArtifact(hello_vr_exe, .{});
@@ -66,10 +65,14 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Test step
-    const lib_tests = b.addTest(.{
+    const test_mod = b.createModule(.{
         .root_source_file = b.path("src/rlOpenXR.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    const lib_tests = b.addTest(.{
+        .root_module = test_mod,
     });
     lib_tests.linkLibC();
 

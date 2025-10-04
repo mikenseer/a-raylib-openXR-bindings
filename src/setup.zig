@@ -243,7 +243,12 @@ fn checkGraphicsRequirements(state: *main.State) !void {
 }
 
 fn createSession(state: *main.State) !void {
-    state.graphics_binding = @import("platform/" ++ @tagName(@import("builtin").os.tag) ++ ".zig").getCurrentGraphicsBinding();
+    const builtin = @import("builtin");
+    state.graphics_binding = switch (builtin.os.tag) {
+        .windows => @import("platform/windows.zig").getCurrentGraphicsBinding(),
+        .linux => @import("platform/linux.zig").getCurrentGraphicsBinding(),
+        else => @compileError("Unsupported platform for OpenXR"),
+    };
 
     const session_create_info = c.XrSessionCreateInfo{
         .type = c.XR_TYPE_SESSION_CREATE_INFO,
@@ -441,7 +446,7 @@ fn printSystemProperties(props: *const c.XrSystemProperties) void {
     });
 }
 
-fn printViewConfigInfo(count: u32, views: []const c.XrViewConfigurationView) void {
+fn printViewConfigInfo(_: u32, views: []const c.XrViewConfigurationView) void {
     for (views, 0..) |view, i| {
         std.debug.print("View {d}: {d}x{d} (max: {d}x{d})\n", .{
             i,

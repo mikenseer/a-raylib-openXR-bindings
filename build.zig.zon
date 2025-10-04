@@ -1,7 +1,8 @@
 .{
-    .name = "rlOpenXR-zig",
+    .name = .rlopenxr,
     .version = "0.1.0",
     .minimum_zig_version = "0.15.1",
+    .fingerprint = 0xd06d30a0504deced,
 
     .dependencies = .{
         // Dependencies will be added here for raylib and OpenXR SDK

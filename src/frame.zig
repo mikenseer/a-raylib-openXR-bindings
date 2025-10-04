@@ -284,11 +284,18 @@ pub fn updateCameraOpenXR(state: *main.State, camera: *c.Camera3D) void {
 }
 
 pub fn getTimeOpenXR(state: *main.State) c.XrTime {
-    const platform_impl = @import("platform/" ++ @tagName(@import("builtin").os.tag) ++ ".zig");
-    const current_time = platform_impl.convertPerformanceCounterToTime(
-        state.data.instance,
-        state.extensions.xrConvertWin32PerformanceCounterToTimeKHR,
-    );
+    const builtin = @import("builtin");
+    const current_time = switch (builtin.os.tag) {
+        .windows => @import("platform/windows.zig").convertPerformanceCounterToTime(
+            state.data.instance,
+            state.extensions.xrConvertWin32PerformanceCounterToTimeKHR,
+        ),
+        .linux => @import("platform/linux.zig").convertPerformanceCounterToTime(
+            state.data.instance,
+            null,
+        ),
+        else => state.frame_state.predictedDisplayTime,
+    };
     const predicted_time = state.frame_state.predictedDisplayTime;
 
     return @max(current_time, predicted_time);
