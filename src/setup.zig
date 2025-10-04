@@ -371,7 +371,68 @@ fn createSwapchains(state: *main.State) !void {
     // Create framebuffer
     state.fbo = c.rlLoadFramebuffer(swapchain_width, swapchain_height);
 
-    // TODO: Create depth swapchain if supported
+    // Create depth swapchain if supported
+    if (state.extensions.depth_enabled) {
+        const depth_format: i64 = c.GL_DEPTH_COMPONENT16;
+
+        // Check if depth format is supported
+        var depth_supported = false;
+        for (formats) |fmt| {
+            if (fmt == depth_format) {
+                depth_supported = true;
+                break;
+            }
+        }
+
+        if (depth_supported) {
+            const depth_swapchain_create_info = c.XrSwapchainCreateInfo{
+                .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
+                .next = null,
+                .createFlags = 0,
+                .usageFlags = c.XR_SWAPCHAIN_USAGE_SAMPLED_BIT | c.XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .format = depth_format,
+                .sampleCount = state.viewconfig_views.items[0].recommendedSwapchainSampleCount,
+                .width = swapchain_width,
+                .height = swapchain_height,
+                .faceCount = 1,
+                .arraySize = 1,
+                .mipCount = 1,
+            };
+
+            result = c.xrCreateSwapchain(state.data.session, &depth_swapchain_create_info, &state.depth_swapchain);
+            if (!main.xrCheck(result, "Failed to create depth swapchain", .{})) {
+                std.debug.print("Disabling depth support\n", .{});
+                state.extensions.depth_enabled = false;
+            } else {
+                var depth_image_count: u32 = 0;
+                result = c.xrEnumerateSwapchainImages(state.depth_swapchain, 0, &depth_image_count, null);
+                if (main.xrCheck(result, "Got depth swapchain image count", .{})) {
+                    try state.depth_swapchain_images.resize(depth_image_count);
+                    for (state.depth_swapchain_images.items) |*img| {
+                        img.* = .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR, .next = null, .image = 0 };
+                    }
+
+                    result = c.xrEnumerateSwapchainImages(
+                        state.depth_swapchain,
+                        depth_image_count,
+                        &depth_image_count,
+                        @ptrCast(state.depth_swapchain_images.items.ptr),
+                    );
+
+                    if (main.xrCheck(result, "Created depth swapchain", .{})) {
+                        std.debug.print("Depth swapchain: {d}x{d} with {d} images\n", .{
+                            swapchain_width,
+                            swapchain_height,
+                            depth_image_count,
+                        });
+                    }
+                }
+            }
+        } else {
+            std.debug.print("Depth format not supported, disabling depth\n", .{});
+            state.extensions.depth_enabled = false;
+        }
+    }
 }
 
 fn initializeFrameStructures(state: *main.State) !void {

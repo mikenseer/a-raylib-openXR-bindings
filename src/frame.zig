@@ -177,7 +177,7 @@ pub fn beginOpenXR(state: *main.State) bool {
 
     const color_image = state.swapchain_images.items[swapchain_image_index].image;
 
-    // Attach to framebuffer
+    // Attach color to framebuffer
     c.rlFramebufferAttach(
         state.fbo,
         color_image,
@@ -185,6 +185,34 @@ pub fn beginOpenXR(state: *main.State) bool {
         c.RL_ATTACHMENT_TEXTURE2D,
         0,
     );
+
+    // Attach depth if enabled
+    if (state.extensions.depth_enabled) {
+        var depth_swapchain_image_index: u32 = 0;
+        const depth_acquire_info = c.XrSwapchainImageAcquireInfo{
+            .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO,
+            .next = null,
+        };
+        result = c.xrAcquireSwapchainImage(state.depth_swapchain, &depth_acquire_info, &depth_swapchain_image_index);
+        if (main.xrCheck(result, "Acquired depth swapchain image", .{})) {
+            const depth_wait_info = c.XrSwapchainImageWaitInfo{
+                .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
+                .next = null,
+                .timeout = c.XR_INFINITE_DURATION,
+            };
+            result = c.xrWaitSwapchainImage(state.depth_swapchain, &depth_wait_info);
+            if (main.xrCheck(result, "Waited for depth swapchain image", .{})) {
+                const depth_image = state.depth_swapchain_images.items[depth_swapchain_image_index].image;
+                c.rlFramebufferAttach(
+                    state.fbo,
+                    depth_image,
+                    c.RL_ATTACHMENT_DEPTH,
+                    c.RL_ATTACHMENT_TEXTURE2D,
+                    0,
+                );
+            }
+        }
+    }
 
     // Begin texture mode
     const render_width = state.viewconfig_views.items[0].recommendedImageRectWidth * 2;
@@ -237,12 +265,20 @@ pub fn endOpenXR(state: *main.State) void {
 
         c.rlDisableStereoRender();
 
-        // Release swapchain image
+        // Release swapchain images
         const release_info = c.XrSwapchainImageReleaseInfo{
             .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
             .next = null,
         };
         _ = c.xrReleaseSwapchainImage(state.swapchain, &release_info);
+
+        if (state.extensions.depth_enabled) {
+            const depth_release_info = c.XrSwapchainImageReleaseInfo{
+                .type = c.XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO,
+                .next = null,
+            };
+            _ = c.xrReleaseSwapchainImage(state.depth_swapchain, &depth_release_info);
+        }
     }
 
     // End frame

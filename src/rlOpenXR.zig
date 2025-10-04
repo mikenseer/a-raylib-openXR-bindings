@@ -247,8 +247,29 @@ pub fn updateCamera(camera: *c.Camera3D) void {
 }
 
 pub fn updateCameraTransform(transform: *c.Transform) void {
-    _ = transform;
-    // TODO: Implement transform update
+    if (state) |*s| {
+        const time = @import("frame.zig").getTimeOpenXR(s);
+
+        var view_location: c.XrSpaceLocation = .{
+            .type = c.XR_TYPE_SPACE_LOCATION,
+            .next = null,
+        };
+
+        const result = c.xrLocateSpace(s.data.view_space, s.data.play_space, time, &view_location);
+        if (!xrCheck(result, "Could not locate view for transform", .{})) {
+            return;
+        }
+
+        if ((view_location.locationFlags & c.XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0) {
+            const pos = view_location.pose.position;
+            transform.translation = .{ .x = pos.x, .y = pos.y, .z = pos.z };
+        }
+
+        if ((view_location.locationFlags & c.XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0) {
+            const rot = view_location.pose.orientation;
+            transform.rotation = .{ .x = rot.x, .y = rot.y, .z = rot.z, .w = rot.w };
+        }
+    }
 }
 
 //==============================================================================
@@ -372,14 +393,17 @@ pub fn getTime() c.XrTime {
 //==============================================================================
 
 pub fn updateHands(left: ?*HandData, right: ?*HandData) void {
-    _ = left;
-    _ = right;
-    // Implementation will be added
+    if (state) |*s| {
+        const input_impl = @import("input.zig");
+        input_impl.updateHandsOpenXR(s, left, right);
+    }
 }
 
 pub fn syncSingleActionSet(action_set: c.XrActionSet) void {
-    _ = action_set;
-    // Implementation will be added
+    if (state) |*s| {
+        const input_impl = @import("input.zig");
+        input_impl.syncSingleActionSetOpenXR(s, action_set);
+    }
 }
 
 //==============================================================================
