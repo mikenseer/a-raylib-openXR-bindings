@@ -1,0 +1,77 @@
+# Zig build artifacts
+zig-cache/
+zig-out/
+.zig-cache/
+*.zig.zon.hash
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+.fleet/
+*.sublime-*
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+.directory
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Android / APK artifacts
+*.apk
+*.aab
+*.dex
+*.ap_
+*.class
+local.properties
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Dependencies (if vendored locally)
+vendor/
+deps/
+third_party/*/build/
+
+# Logs and debug files
+*.log
+crash_*.txt
+*.stackdump
+
+# VR runtime specific
+*.vr_profile
+steamvr.vrsettings
+
+# Temp files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Reference C++ project (keep for reference but don't track build artifacts)
+rlOpenXR-reference/build/
+rlOpenXR-reference/cmake-build-*/
+rlOpenXR-reference/.vs/
+rlOpenXR-reference/out/
+rlOpenXR-reference/_deps/
