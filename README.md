@@ -1,6 +1,12 @@
+<div align="center">
+
+<img src="assets/logo.png" alt="rlOpenXR-Zig Logo" width="200"/>
+
 # rlOpenXR-Zig
 
 Zig bindings for raylib with OpenXR VR support, providing cross-platform VR development for PC (Windows, Linux) and Android (Quest 3).
+
+</div>
 
 ## Features
 
