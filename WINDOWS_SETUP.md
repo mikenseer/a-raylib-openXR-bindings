@@ -9,8 +9,13 @@ This guide will help you build and test the raylib OpenXR bindings on Windows.
 - **Git** - For cloning the repository
 - **Visual Studio Build Tools** (optional) - For C/C++ compilation if needed
 
+### Required for Building
+- **OpenXR SDK** - Headers only (see Phase 2)
+- **VR Runtime** - Provides OpenXR loader library (REQUIRED - see Phase 2)
+  - SteamVR (recommended), or
+  - Meta PC Software
+
 ### Optional (for VR testing)
-- **SteamVR** or **Oculus software** - VR runtime
 - **VR Headset** - Valve Index, Quest 3, etc.
 
 ## Phase 1: Build Without OpenXR (Raylib Only)
@@ -31,37 +36,43 @@ zig build
 
 If you get errors about missing OpenXR headers, that's expected - proceed to Phase 2.
 
-## Phase 2: Install OpenXR SDK (Not Committed to Repo)
+## Phase 2: Install OpenXR Dependencies
 
-OpenXR SDK is **not included** in the repository. You need to download it separately.
+### Step 1: Install VR Runtime (REQUIRED for linking)
 
-### Option A: Download Pre-built SDK (Recommended)
+You **must** install a VR runtime to build this project. The runtime provides the OpenXR loader library.
 
-1. **Download OpenXR SDK:**
-   - Go to https://github.com/KhronosGroup/OpenXR-SDK/releases
-   - Download latest Windows release (e.g., `OpenXR-SDK-1.0.33-windows.zip`)
-   - Extract to a location like `C:\OpenXR-SDK`
+**Choose ONE:**
 
-2. **Add Include Path to Build:**
+1. **SteamVR** (Recommended - works with most headsets)
+   - Install from Steam: https://store.steampowered.com/app/250820
+   - Provides: `C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\openxr_loader.dll`
+   - The build system automatically finds this
 
-   Create a file `.build-config.zig` in the project root:
+2. **Meta PC Software** (For Quest Link)
+   - Download: https://www.meta.com/quest/setup/
+   - Installs OpenXR loader to system directories
+
+### Step 2: Install OpenXR SDK Headers
+
+The SDK provides header files for compilation (not the loader).
+
+1. **Clone the SDK:**
+   ```cmd
+   cd C:\
+   git clone https://github.com/KhronosGroup/OpenXR-SDK.git
+   ```
+   OR download and extract to `C:\OpenXR-SDK`
+
+2. **Configure build path** - Edit `build.zig` at the top:
    ```zig
-   // Local build configuration (NOT committed to repo)
-   pub const openxr_include_path = "C:\\OpenXR-SDK\\include";
-   pub const openxr_lib_path = "C:\\OpenXR-SDK\\lib";
+   const OPENXR_SDK_PATH: ?[]const u8 = "C:\\OpenXR-SDK";
    ```
 
-3. **Update `.gitignore`:**
-   The repo should already ignore `.build-config.zig` so your local paths don't get committed.
-
-### Option B: Use System Environment Variable
-
-Set environment variable:
-```cmd
-set OPENXR_SDK_PATH=C:\OpenXR-SDK
-```
-
-Then the build system can check for this variable.
+   Alternatively, set environment variable:
+   ```cmd
+   set OPENXR_SDK=C:\OpenXR-SDK
+   ```
 
 ### Option C: Use Zig's Include Path Flag
 
