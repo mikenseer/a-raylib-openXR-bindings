@@ -106,6 +106,11 @@ pub fn build(b: *std.Build) void {
 
         if (loader_found) {
             std.debug.print("✓ Found OpenXR loader at: {s}\n", .{found_path});
+
+            // Copy the DLL to output directory for runtime
+            const dll_src = b.fmt("{s}\\openxr_loader.dll", .{found_path});
+            const install_dll = b.addInstallBinFile(.{ .cwd_relative = dll_src }, "openxr_loader.dll");
+            b.getInstallStep().dependOn(&install_dll.step);
         } else {
             std.debug.print("\n", .{});
             std.debug.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", .{});
