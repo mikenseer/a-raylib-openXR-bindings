@@ -12,11 +12,16 @@ pub fn build(b: *std.Build) void {
     const raylib = raylib_dep.module("raylib");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
-    // OpenXR headers will be provided by system installation or SDK
-    // Users need to install OpenXR SDK and ensure headers are in include path
-    // Windows: https://github.com/KhronosGroup/OpenXR-SDK/releases
+    // OpenXR SDK Configuration
+    // Users need to install OpenXR SDK and configure the path
+    // Windows: Download from https://github.com/KhronosGroup/OpenXR-SDK/releases
     // Linux: Install openxr-dev package or build from source
     // Android: Meta OpenXR Mobile SDK or build from source
+    //
+    // Set OPENXR_SDK environment variable to point to SDK location, e.g.:
+    //   Windows: set OPENXR_SDK=C:\OpenXR-SDK
+    //   Linux: export OPENXR_SDK=/usr/local/openxr
+    const openxr_sdk_path = b.graph.env_map.get("OPENXR_SDK");
 
     // Create the rlOpenXR library module
     const rlOpenXR_mod = b.addModule("rlOpenXR", .{
@@ -33,6 +38,21 @@ pub fn build(b: *std.Build) void {
 
     // Link C library (required for OpenXR and raylib)
     rlOpenXR.linkLibC();
+
+    // Configure OpenXR SDK paths if available
+    if (openxr_sdk_path) |sdk_path| {
+        const include_path = b.fmt("{s}/include", .{sdk_path});
+        const lib_path = b.fmt("{s}/lib", .{sdk_path});
+
+        rlOpenXR.addIncludePath(.{ .cwd_relative = include_path });
+        rlOpenXR.addLibraryPath(.{ .cwd_relative = lib_path });
+
+        std.debug.print("✓ Using OpenXR SDK from: {s}\n", .{sdk_path});
+    } else {
+        std.debug.print("ℹ OPENXR_SDK not set - OpenXR headers must be in system include path\n", .{});
+        std.debug.print("  Windows: set OPENXR_SDK=C:\\OpenXR-SDK\n", .{});
+        std.debug.print("  Linux:   export OPENXR_SDK=/usr/local/openxr\n", .{});
+    }
 
     // Link raylib
     rlOpenXR.linkLibrary(raylib_artifact);
