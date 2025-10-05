@@ -130,6 +130,7 @@ pub const State = struct {
 
     swapchain: c.XrSwapchain = null,
     swapchain_images: std.ArrayList(c.XrSwapchainImageOpenGLKHR) = undefined,
+    current_swapchain_index: u32 = 0, // Track current image for blitting
     depth_swapchain: c.XrSwapchain = null,
     depth_swapchain_images: std.ArrayList(c.XrSwapchainImageOpenGLKHR) = undefined,
 
@@ -313,8 +314,8 @@ pub fn end() void {
 
 pub fn blitToWindow(eye: Eye, keep_aspect_ratio: bool) void {
     if (state) |*s| {
-        if (s.active_fbo == 0) {
-            std.debug.print("rlOpenXR is not currently drawing\n", .{});
+        // Check if we have a valid swapchain
+        if (s.swapchain_images.items.len == 0) {
             return;
         }
 
@@ -341,8 +342,8 @@ pub fn blitToWindow(eye: Eye, keep_aspect_ratio: bool) void {
         var dest = c.XrRect2Di{
             .offset = .{ .x = 0, .y = 0 },
             .extent = .{
-                .width = c.rlGetFramebufferWidth(),
-                .height = c.rlGetFramebufferHeight(),
+                .width = c.GetScreenWidth(),
+                .height = c.GetScreenHeight(),
             },
         };
 
@@ -350,38 +351,59 @@ pub fn blitToWindow(eye: Eye, keep_aspect_ratio: bool) void {
             const src_aspect: f32 = @as(f32, @floatFromInt(src.extent.width)) / @as(f32, @floatFromInt(src.extent.height));
             const dest_aspect: f32 = @as(f32, @floatFromInt(dest.extent.width)) / @as(f32, @floatFromInt(dest.extent.height));
 
+            const screen_width = dest.extent.width;
+            const screen_height = dest.extent.height;
+
             if (src_aspect > dest_aspect) {
                 const new_height = @as(f32, @floatFromInt(dest.extent.width)) / src_aspect;
                 dest.extent.height = @intFromFloat(new_height);
+                // Center vertically
+                dest.offset.y = @intCast(@divTrunc(screen_height - dest.extent.height, 2));
             } else {
                 const new_width = @as(f32, @floatFromInt(dest.extent.height)) * src_aspect;
                 dest.extent.width = @intFromFloat(new_width);
+                // Center horizontally
+                dest.offset.x = @intCast(@divTrunc(screen_width - dest.extent.width, 2));
             }
         }
 
+        // Disable VR framebuffer to draw to window
         c.rlDisableFramebuffer();
-        c.ClearBackground(c.BLACK);
 
-        // Draw the VR framebuffer texture to the window
-        const texture_id = if (s.swapchain_images.items.len > 0) s.swapchain_images.items[0].image else 0;
-        c.rlSetTexture(texture_id);
-        c.rlBegin(c.RL_QUADS);
+        // Create a texture struct for raylib to draw
+        const texture_id = if (s.swapchain_images.items.len > s.current_swapchain_index)
+            s.swapchain_images.items[s.current_swapchain_index].image
+        else
+            0;
 
-        // Flip Y coordinates for proper orientation
-        c.rlTexCoord2f(0.0, 1.0);
-        c.rlVertex2f(@floatFromInt(dest.offset.x), @floatFromInt(dest.offset.y));
+        // Total swapchain texture dimensions (both eyes side-by-side)
+        const total_width = s.viewconfig_views.items[0].recommendedImageRectWidth * 2;
+        const total_height = s.viewconfig_views.items[0].recommendedImageRectHeight;
 
-        c.rlTexCoord2f(1.0, 1.0);
-        c.rlVertex2f(@floatFromInt(dest.offset.x + dest.extent.width), @floatFromInt(dest.offset.y));
+        const vr_texture = c.Texture2D{
+            .id = texture_id,
+            .width = @intCast(total_width),
+            .height = @intCast(total_height),
+            .mipmaps = 1,
+            .format = c.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+        };
 
-        c.rlTexCoord2f(1.0, 0.0);
-        c.rlVertex2f(@floatFromInt(dest.offset.x + dest.extent.width), @floatFromInt(dest.offset.y + dest.extent.height));
+        // Source rectangle within the VR texture
+        const src_rect = c.Rectangle{
+            .x = @floatFromInt(src.offset.x),
+            .y = @floatFromInt(src.offset.y),
+            .width = @floatFromInt(src.extent.width),
+            .height = -@as(f32, @floatFromInt(src.extent.height)), // Negative to flip Y (OpenGL texture is upside down)
+        };
 
-        c.rlTexCoord2f(0.0, 0.0);
-        c.rlVertex2f(@floatFromInt(dest.offset.x), @floatFromInt(dest.offset.y + dest.extent.height));
+        const dest_rect = c.Rectangle{
+            .x = @floatFromInt(dest.offset.x),
+            .y = @floatFromInt(dest.offset.y),
+            .width = @floatFromInt(dest.extent.width),
+            .height = @floatFromInt(dest.extent.height),
+        };
 
-        c.rlEnd();
-        c.rlSetTexture(0);
+        c.DrawTexturePro(vr_texture, src_rect, dest_rect, .{ .x = 0, .y = 0 }, 0, c.WHITE);
 
         c.rlEnableFramebuffer(s.active_fbo);
     }
@@ -404,6 +426,18 @@ pub fn getTime() c.XrTime {
         return frame_impl.getTimeOpenXR(s);
     }
     return 0;
+}
+
+pub fn getEyeResolution() ?struct { width: u32, height: u32 } {
+    if (state) |*s| {
+        if (s.viewconfig_views.items.len > 0) {
+            return .{
+                .width = s.viewconfig_views.items[0].recommendedImageRectWidth,
+                .height = s.viewconfig_views.items[0].recommendedImageRectHeight,
+            };
+        }
+    }
+    return null;
 }
 
 //==============================================================================
