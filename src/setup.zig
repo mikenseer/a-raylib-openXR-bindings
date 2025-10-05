@@ -43,11 +43,8 @@ pub fn setupOpenXR(state: *main.State) !void {
     try enabled_exts.append(state.allocator, opengl_ext);
 
     // Optional but useful extensions
-    try enabled_exts.append(state.allocator, c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-    if (@import("builtin").os.tag == .windows) {
-        try enabled_exts.append(state.allocator, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
-    }
+    // NOTE: Debug utils commented out - can cause instance creation failures with some runtimes
+    // try enabled_exts.append(state.allocator, c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     std.debug.print("Runtime supports {d} extensions:\n", .{ext_count});
     for (ext_props) |ext| {
@@ -58,15 +55,24 @@ pub fn setupOpenXR(state: *main.State) !void {
             opengl_supported = true;
         }
 
-        if (std.mem.eql(u8, ext_name, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) {
-            state.extensions.depth_enabled = true;
-            try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
-        }
+        // Depth layer extension - temporarily disabled for debugging
+        // if (std.mem.eql(u8, ext_name, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) {
+        //     state.extensions.depth_enabled = true;
+        //     try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
+        // }
 
-        // Quest-specific refresh rate extension
-        if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
-            try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
-        }
+        // Windows performance counter time conversion - temporarily disabled for debugging
+        // if (@import("builtin").os.tag == .windows) {
+        //     if (std.mem.eql(u8, ext_name, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME)) {
+        //         try enabled_exts.append(state.allocator, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
+        //     }
+        // }
+
+        // Quest-specific refresh rate extension (only enable on Meta/Oculus runtimes)
+        // Note: SteamVR reports this extension but may reject it at instance creation
+        // if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
+        //     try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
+        // }
     }
 
     if (!opengl_supported) {
@@ -74,13 +80,25 @@ pub fn setupOpenXR(state: *main.State) !void {
         return error.ExtensionNotSupported;
     }
 
+    std.debug.print("\nRequesting {d} extensions:\n", .{enabled_exts.items.len});
+    for (enabled_exts.items) |ext| {
+        std.debug.print("  {s}\n", .{std.mem.sliceTo(ext, 0)});
+    }
+    std.debug.print("\n", .{});
+
     // Create XrInstance
     var app_info = std.mem.zeroes(c.XrApplicationInfo);
-    @memcpy(app_info.applicationName[0..16], "rlOpenXR-Zig App");
-    @memcpy(app_info.engineName[0..17], "Raylib (rlOpenXR)");
+    // Copy strings with proper null termination
+    const app_name = "rlOpenXR-Zig";
+    const engine_name = "Raylib";
+    @memcpy(app_info.applicationName[0..app_name.len], app_name);
+    app_info.applicationName[app_name.len] = 0; // Null terminator
+    @memcpy(app_info.engineName[0..engine_name.len], engine_name);
+    app_info.engineName[engine_name.len] = 0; // Null terminator
     app_info.applicationVersion = 1;
     app_info.engineVersion = 1;
-    app_info.apiVersion = c.XR_CURRENT_API_VERSION;
+    // Use XR_API_VERSION_1_0 instead of XR_CURRENT_API_VERSION for better compatibility
+    app_info.apiVersion = c.XR_MAKE_VERSION(1, 0, 0);
 
     const instance_create_info = c.XrInstanceCreateInfo{
         .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
@@ -92,6 +110,12 @@ pub fn setupOpenXR(state: *main.State) !void {
         .enabledExtensionCount = @intCast(enabled_exts.items.len),
         .enabledExtensionNames = enabled_exts.items.ptr,
     };
+
+    std.debug.print("Creating instance with:\n", .{});
+    std.debug.print("  App: {s} v{d}\n", .{ std.mem.sliceTo(&app_info.applicationName, 0), app_info.applicationVersion });
+    std.debug.print("  Engine: {s} v{d}\n", .{ std.mem.sliceTo(&app_info.engineName, 0), app_info.engineVersion });
+    std.debug.print("  API Version: 0x{x}\n", .{app_info.apiVersion});
+    std.debug.print("  Extensions: {d}\n\n", .{instance_create_info.enabledExtensionCount});
 
     result = c.xrCreateInstance(&instance_create_info, &state.data.instance);
     if (!main.xrCheck(result, "Failed to create XR instance", .{})) {
