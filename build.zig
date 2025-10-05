@@ -1,5 +1,18 @@
 const std = @import("std");
 
+//==============================================================================
+// OpenXR SDK Configuration
+//==============================================================================
+// OPTION 1 (Recommended): Set environment variable before building:
+//   Windows:  set OPENXR_SDK=C:\OpenXR-SDK
+//   Linux:    export OPENXR_SDK=/usr/local/openxr
+//
+// OPTION 2: Hardcode path here (uncomment ONE line below):
+const OPENXR_SDK_PATH: ?[]const u8 = "C:\\OpenXR-SDK";        // Windows example
+// const OPENXR_SDK_PATH: ?[]const u8 = "/usr/local/openxr";    // Linux example
+// const OPENXR_SDK_PATH: ?[]const u8 = null;  // Leave null to use environment variable
+//==============================================================================
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -12,16 +25,8 @@ pub fn build(b: *std.Build) void {
     const raylib = raylib_dep.module("raylib");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
-    // OpenXR SDK Configuration
-    // Users need to install OpenXR SDK and configure the path
-    // Windows: Download from https://github.com/KhronosGroup/OpenXR-SDK/releases
-    // Linux: Install openxr-dev package or build from source
-    // Android: Meta OpenXR Mobile SDK or build from source
-    //
-    // Set OPENXR_SDK environment variable to point to SDK location, e.g.:
-    //   Windows: set OPENXR_SDK=C:\OpenXR-SDK
-    //   Linux: export OPENXR_SDK=/usr/local/openxr
-    const openxr_sdk_path = b.graph.env_map.get("OPENXR_SDK");
+    // Get OpenXR SDK path (hardcoded path overrides environment variable)
+    const openxr_sdk_path: ?[]const u8 = if (OPENXR_SDK_PATH) |path| path else b.graph.env_map.get("OPENXR_SDK");
 
     // Create the rlOpenXR library module
     const rlOpenXR_mod = b.addModule("rlOpenXR", .{
@@ -42,16 +47,15 @@ pub fn build(b: *std.Build) void {
     // Configure OpenXR SDK paths if available
     if (openxr_sdk_path) |sdk_path| {
         const include_path = b.fmt("{s}/include", .{sdk_path});
-        const lib_path = b.fmt("{s}/lib", .{sdk_path});
-
         rlOpenXR.addIncludePath(.{ .cwd_relative = include_path });
-        rlOpenXR.addLibraryPath(.{ .cwd_relative = lib_path });
 
-        std.debug.print("✓ Using OpenXR SDK from: {s}\n", .{sdk_path});
+        std.debug.print("✓ Using OpenXR headers from: {s}\n", .{sdk_path});
+        std.debug.print("  (OpenXR loader will be provided by VR runtime)\n", .{});
     } else {
-        std.debug.print("ℹ OPENXR_SDK not set - OpenXR headers must be in system include path\n", .{});
-        std.debug.print("  Windows: set OPENXR_SDK=C:\\OpenXR-SDK\n", .{});
-        std.debug.print("  Linux:   export OPENXR_SDK=/usr/local/openxr\n", .{});
+        std.debug.print("ℹ OPENXR_SDK not configured\n", .{});
+        std.debug.print("  Set path at top of build.zig or use environment variable:\n", .{});
+        std.debug.print("    Windows: set OPENXR_SDK=C:\\OpenXR-SDK\n", .{});
+        std.debug.print("    Linux:   export OPENXR_SDK=/usr/local/openxr\n", .{});
     }
 
     // Link raylib
@@ -67,16 +71,70 @@ pub fn build(b: *std.Build) void {
         rlOpenXR.linkSystemLibrary("GL");
         rlOpenXR.linkSystemLibrary("X11");
     }
-    // Link OpenXR loader (system library - needs OpenXR runtime installed)
-    // Note: On Windows, install SteamVR or Oculus runtime
-    // On Linux, install Monado or SteamVR
-    // The openxr-zig module provides headers, but we still need the loader
+    // Link OpenXR loader library
+    // NOTE: The loader DLL is NOT installed system-wide by VR runtimes
+    // VR apps typically bundle it with their executable or add its path to PATH
     if (target.result.os.tag == .windows) {
-        // Windows: Try to link openxr_loader (may need manual SDK installation)
-        // rlOpenXR.linkSystemLibrary("openxr_loader");
+        // Check common VR runtime locations for openxr_loader.dll
+        const possible_paths = [_][]const u8{
+            // Current directory (if user copied DLL here)
+            ".",
+            // SteamVR locations (common install paths)
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\bin\\win64",
+            "D:\\Steam\\steamapps\\common\\SteamVR\\bin\\win64",
+            "D:\\SteamLibrary\\steamapps\\common\\SteamVR\\bin\\win64",
+            "E:\\SteamLibrary\\steamapps\\common\\SteamVR\\bin\\win64",
+        };
+
+        var loader_found = false;
+        var found_path: []const u8 = "";
+
+        for (possible_paths) |path| {
+            const dll_path = b.fmt("{s}\\openxr_loader.dll", .{path});
+            const file = std.fs.cwd().openFile(dll_path, .{}) catch continue;
+            file.close();
+
+            // Found it!
+            rlOpenXR.addLibraryPath(.{ .cwd_relative = path });
+            loader_found = true;
+            found_path = path;
+            break;
+        }
+
+        // Try to link (will fail with clear error if not found)
+        rlOpenXR.linkSystemLibrary("openxr_loader");
+
+        if (loader_found) {
+            std.debug.print("✓ Found OpenXR loader at: {s}\n", .{found_path});
+        } else {
+            std.debug.print("\n", .{});
+            std.debug.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", .{});
+            std.debug.print("  OpenXR Loader Required\n", .{});
+            std.debug.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("  The build needs openxr_loader.dll for linking.\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("  OPTION 1 - Use your VR runtime's loader (if installed):\n", .{});
+            std.debug.print("    Find openxr_loader.dll in your VR runtime folder and copy it here:\n", .{});
+            std.debug.print("      • SteamVR: Steam\\steamapps\\common\\SteamVR\\bin\\win64\\\n", .{});
+            std.debug.print("      • Meta: Check your Oculus install directory\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("  OPTION 2 - Download official Khronos loader:\n", .{});
+            std.debug.print("    https://github.com/KhronosGroup/OpenXR-SDK/releases\n", .{});
+            std.debug.print("    Extract openxr_loader.dll from the Windows zip to this directory\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("  OPTION 3 - Install a VR runtime (if you don't have one):\n", .{});
+            std.debug.print("    • SteamVR: https://store.steampowered.com/app/250820\n", .{});
+            std.debug.print("    • Meta PC: https://www.meta.com/quest/setup/\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("  (The DLL is NOT committed to git - ~500KB)\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", .{});
+            std.debug.print("\n", .{});
+        }
     } else if (target.result.os.tag == .linux) {
-        // Linux: Link system OpenXR loader
-        // rlOpenXR.linkSystemLibrary("openxr_loader");
+        // Linux: Use system OpenXR package (apt install libopenxr-loader1)
+        rlOpenXR.linkSystemLibrary("openxr_loader");
     }
 
     // TODO: Add Android support when targeting Android
