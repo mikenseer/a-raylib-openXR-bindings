@@ -55,11 +55,11 @@ pub fn setupOpenXR(state: *main.State) !void {
             opengl_supported = true;
         }
 
-        // Depth layer extension - temporarily disabled for debugging
-        // if (std.mem.eql(u8, ext_name, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) {
-        //     state.extensions.depth_enabled = true;
-        //     try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
-        // }
+        // Depth layer extension
+        if (std.mem.eql(u8, ext_name, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) {
+            state.extensions.depth_enabled = true;
+            try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
+        }
 
         // Windows performance counter time conversion - temporarily disabled for debugging
         // if (@import("builtin").os.tag == .windows) {

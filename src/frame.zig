@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = main.c; // Use main's C imports to avoid type mismatches
+const c = main.c;
 
 pub fn updateOpenXR(state: *main.State) void {
     // Poll OpenXR events
@@ -252,6 +252,10 @@ pub fn beginOpenXR(state: *main.State) bool {
 
     c.BeginTextureMode(render_texture);
     state.active_fbo = state.fbo;
+
+    // BeginTextureMode disables depth testing - but the render_texture has a depth buffer
+    // from raylib's default FBO creation, so re-enable depth testing to use it
+    c.rlEnableDepthTest();
 
     // Setup stereo rendering
     c.rlEnableStereoRender();
