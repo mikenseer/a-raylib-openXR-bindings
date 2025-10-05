@@ -165,6 +165,10 @@ pub fn build(b: *std.Build) void {
 
     const install_hello_vr = b.addInstallArtifact(hello_vr_exe, .{});
 
+    // Build step for hello_vr
+    const build_hello_vr_step = b.step("hello_vr", "Build the hello_vr example");
+    build_hello_vr_step.dependOn(&install_hello_vr.step);
+
     // Run step
     const run_cmd = b.addRunArtifact(hello_vr_exe);
     run_cmd.step.dependOn(&install_hello_vr.step);
@@ -174,6 +178,99 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the hello_vr example");
     run_step.dependOn(&run_cmd.step);
+
+    // Build hello_hands example
+    const hello_hands_mod = b.createModule(.{
+        .root_source_file = b.path("examples/hello_hands.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_hands_mod.addImport("rlOpenXR", rlOpenXR_mod);
+
+    const hello_hands_exe = b.addExecutable(.{
+        .name = "hello_hands",
+        .root_module = hello_hands_mod,
+    });
+    hello_hands_exe.linkLibrary(rlOpenXR);
+    hello_hands_exe.linkLibrary(raylib_artifact);
+
+    const install_hello_hands = b.addInstallArtifact(hello_hands_exe, .{});
+
+    // Build step for hello_hands
+    const build_hello_hands_step = b.step("hello_hands", "Build the hello_hands example");
+    build_hello_hands_step.dependOn(&install_hello_hands.step);
+
+    // Run step for hello_hands
+    const run_hands_cmd = b.addRunArtifact(hello_hands_exe);
+    run_hands_cmd.step.dependOn(&install_hello_hands.step);
+    if (b.args) |args| {
+        run_hands_cmd.addArgs(args);
+    }
+
+    const run_hands_step = b.step("run-hands", "Run the hello_hands example");
+    run_hands_step.dependOn(&run_hands_cmd.step);
+
+    // Build hello_clicky_hands example
+    const hello_clicky_hands_mod = b.createModule(.{
+        .root_source_file = b.path("examples/hello_clicky_hands.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_clicky_hands_mod.addImport("rlOpenXR", rlOpenXR_mod);
+
+    const hello_clicky_hands_exe = b.addExecutable(.{
+        .name = "hello_clicky_hands",
+        .root_module = hello_clicky_hands_mod,
+    });
+    hello_clicky_hands_exe.linkLibrary(rlOpenXR);
+    hello_clicky_hands_exe.linkLibrary(raylib_artifact);
+
+    const install_hello_clicky_hands = b.addInstallArtifact(hello_clicky_hands_exe, .{});
+
+    // Build step for hello_clicky_hands
+    const build_hello_clicky_hands_step = b.step("hello_clicky_hands", "Build the hello_clicky_hands example");
+    build_hello_clicky_hands_step.dependOn(&install_hello_clicky_hands.step);
+
+    // Run step for hello_clicky_hands
+    const run_clicky_hands_cmd = b.addRunArtifact(hello_clicky_hands_exe);
+    run_clicky_hands_cmd.step.dependOn(&install_hello_clicky_hands.step);
+    if (b.args) |args| {
+        run_clicky_hands_cmd.addArgs(args);
+    }
+
+    const run_clicky_hands_step = b.step("run-clicky-hands", "Run the hello_clicky_hands example");
+    run_clicky_hands_step.dependOn(&run_clicky_hands_cmd.step);
+
+    // Build hello_teleport example
+    const hello_teleport_mod = b.createModule(.{
+        .root_source_file = b.path("examples/hello_teleport.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_teleport_mod.addImport("rlOpenXR", rlOpenXR_mod);
+
+    const hello_teleport_exe = b.addExecutable(.{
+        .name = "hello_teleport",
+        .root_module = hello_teleport_mod,
+    });
+    hello_teleport_exe.linkLibrary(rlOpenXR);
+    hello_teleport_exe.linkLibrary(raylib_artifact);
+
+    const install_hello_teleport = b.addInstallArtifact(hello_teleport_exe, .{});
+
+    // Build step for hello_teleport
+    const build_hello_teleport_step = b.step("hello_teleport", "Build the hello_teleport example");
+    build_hello_teleport_step.dependOn(&install_hello_teleport.step);
+
+    // Run step for hello_teleport
+    const run_teleport_cmd = b.addRunArtifact(hello_teleport_exe);
+    run_teleport_cmd.step.dependOn(&install_hello_teleport.step);
+    if (b.args) |args| {
+        run_teleport_cmd.addArgs(args);
+    }
+
+    const run_teleport_step = b.step("run-teleport", "Run the hello_teleport example");
+    run_teleport_step.dependOn(&run_teleport_cmd.step);
 
     // Test step
     const test_mod = b.createModule(.{

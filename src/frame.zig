@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = main.c;
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 pub fn updateOpenXR(state: *main.State) void {
     // Poll OpenXR events
@@ -21,13 +21,8 @@ pub fn updateOpenXR(state: *main.State) void {
             },
             c.XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED => {
                 const event: *c.XrEventDataSessionStateChanged = @ptrCast(&runtime_event);
-                const state_names = [_][]const u8{ "UNKNOWN", "IDLE", "READY", "SYNCHRONIZED", "VISIBLE", "FOCUSED", "STOPPING", "LOSS_PENDING", "EXITING" };
-                const old_name = if (state.data.session_state <= 8) state_names[@intCast(state.data.session_state)] else "INVALID";
-                const new_name = if (event.state <= 8) state_names[@intCast(event.state)] else "INVALID";
-                std.debug.print("EVENT: session state {s} ({d}) -> {s} ({d})\n", .{
-                    old_name,
+                std.debug.print("EVENT: session state changed from {d} to {d}\n", .{
                     state.data.session_state,
-                    new_name,
                     event.state,
                 });
                 state.data.session_state = event.state;
@@ -45,8 +40,8 @@ pub fn updateOpenXR(state: *main.State) void {
         poll_result = c.xrPollEvent(state.data.instance, &runtime_event);
     }
 
-    // Wait for next frame (must be called when framecycle is running, even before session starts)
-    if (state.run_framecycle) {
+    // Wait for next frame
+    if (state.session_running) {
         const frame_wait_info = c.XrFrameWaitInfo{
             .type = c.XR_TYPE_FRAME_WAIT_INFO,
             .next = null,
@@ -100,29 +95,7 @@ fn handleSessionStateChange(state: *main.State) void {
 }
 
 pub fn beginOpenXR(state: *main.State) bool {
-    if (!state.session_running or !state.run_framecycle) {
-        return false;
-    }
-
-    // Make sure we have a valid frame time from xrWaitFrame
-    if (state.frame_state.predictedDisplayTime == 0) {
-        return false;
-    }
-
-    // MUST call xrBeginFrame after xrWaitFrame, even if we won't render
-    const frame_begin_info = c.XrFrameBeginInfo{ .type = c.XR_TYPE_FRAME_BEGIN_INFO, .next = null };
-    const begin_result = c.xrBeginFrame(state.data.session, &frame_begin_info);
-    if (!main.xrCheck(begin_result, "Failed to begin frame", .{})) {
-        return false;
-    }
-
-    // Can only render when session is SYNCHRONIZED or later
-    if (state.data.session_state < c.XR_SESSION_STATE_SYNCHRONIZED) {
-        return false;
-    }
-
-    // Check if we should render this frame (runtime tells us via shouldRender flag)
-    if (state.frame_state.shouldRender == 0) {
+    if (!state.session_running) {
         return false;
     }
 
@@ -168,6 +141,17 @@ pub fn beginOpenXR(state: *main.State) bool {
         return false;
     }
 
+    // Begin frame
+    const frame_begin_info = c.XrFrameBeginInfo{ .type = c.XR_TYPE_FRAME_BEGIN_INFO, .next = null };
+    result = c.xrBeginFrame(state.data.session, &frame_begin_info);
+    if (!main.xrCheck(result, "Failed to begin frame", .{})) {
+        return false;
+    }
+
+    if (!state.run_framecycle) {
+        return false;
+    }
+
     // Acquire swapchain image
     var swapchain_image_index: u32 = 0;
     const acquire_info = c.XrSwapchainImageAcquireInfo{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, .next = null };
@@ -175,9 +159,6 @@ pub fn beginOpenXR(state: *main.State) bool {
     if (!main.xrCheck(result, "Failed to acquire swapchain image", .{})) {
         return false;
     }
-
-    // Store index for blitting
-    state.current_swapchain_index = swapchain_image_index;
 
     const wait_info = c.XrSwapchainImageWaitInfo{
         .type = c.XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
@@ -252,10 +233,8 @@ pub fn beginOpenXR(state: *main.State) bool {
 
     c.BeginTextureMode(render_texture);
     state.active_fbo = state.fbo;
-
-    // BeginTextureMode disables depth testing - but the render_texture has a depth buffer
-    // from raylib's default FBO creation, so re-enable depth testing to use it
-    c.rlEnableDepthTest();
+    c.rlEnableDepthTest(); // Enable depth testing for correct rendering order
+    c.rlClearScreenBuffers(); // Clear color and depth buffers
 
     // Setup stereo rendering
     c.rlEnableStereoRender();
@@ -264,21 +243,20 @@ pub fn beginOpenXR(state: *main.State) bool {
     const proj_right = xrProjectionMatrix(state.views.items[1].fov);
     c.rlSetMatrixProjectionStereo(proj_left, proj_right);
 
-    // Match C++ reference: view_matrix = invert(head_pose), then multiply eye poses with it
     const view_matrix = matrixInvert(xrMatrix(view_location.pose));
     const view_offset_left = matrixMultiply(xrMatrix(state.views.items[0].pose), view_matrix);
     const view_offset_right = matrixMultiply(xrMatrix(state.views.items[1].pose), view_matrix);
-    c.rlSetMatrixViewOffsetStereo(view_offset_right, view_offset_left);
+    c.rlSetMatrixViewOffsetStereo(view_offset_left, view_offset_right);
 
     return true;
 }
 
 pub fn endOpenXR(state: *main.State) void {
-    // Track if we rendered based on active_fbo before cleanup
-    const did_render = state.active_fbo != 0;
+    if (!state.session_running) {
+        return;
+    }
 
-    // If we rendered, clean up rendering resources
-    if (did_render) {
+    if (state.run_framecycle) {
         c.EndTextureMode();
         state.active_fbo = 0;
 
@@ -300,35 +278,21 @@ pub fn endOpenXR(state: *main.State) void {
         }
     }
 
-    // MUST call xrEndFrame after every xrWaitFrame, even if we didn't render
-    if (state.run_framecycle and state.frame_state.predictedDisplayTime != 0) {
-        const layer_count: u32 = if (did_render) @intCast(state.layers_pointers.items.len) else 0;
+    // End frame
+    const frame_end_info = c.XrFrameEndInfo{
+        .type = c.XR_TYPE_FRAME_END_INFO,
+        .next = null,
+        .displayTime = state.frame_state.predictedDisplayTime,
+        .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+        .layerCount = @intCast(state.layers_pointers.items.len),
+        .layers = @ptrCast(state.layers_pointers.items.ptr),
+    };
 
-        const frame_end_info = c.XrFrameEndInfo{
-            .type = c.XR_TYPE_FRAME_END_INFO,
-            .next = null,
-            .displayTime = state.frame_state.predictedDisplayTime,
-            .environmentBlendMode = c.XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
-            .layerCount = layer_count,
-            .layers = if (layer_count > 0) @ptrCast(state.layers_pointers.items.ptr) else null,
-        };
-
-        const result = c.xrEndFrame(state.data.session, &frame_end_info);
-        _ = main.xrCheck(result, "Failed to end frame", .{});
-    }
+    const result = c.xrEndFrame(state.data.session, &frame_end_info);
+    _ = main.xrCheck(result, "Failed to end frame", .{});
 }
 
 pub fn updateCameraOpenXR(state: *main.State, camera: *c.Camera3D) void {
-    // Only update camera if we have a valid frame time
-    if (!state.run_framecycle or state.frame_state.predictedDisplayTime == 0) {
-        return;
-    }
-
-    // Can only locate spaces when session is SYNCHRONIZED or later
-    if (state.data.session_state < c.XR_SESSION_STATE_SYNCHRONIZED) {
-        return;
-    }
-
     const time = getTimeOpenXR(state);
 
     var view_location: c.XrSpaceLocation = .{ .type = c.XR_TYPE_SPACE_LOCATION, .next = null };
@@ -353,16 +317,27 @@ pub fn updateCameraOpenXR(state: *main.State, camera: *c.Camera3D) void {
 }
 
 pub fn getTimeOpenXR(state: *main.State) c.XrTime {
-    // Just use predicted display time from xrWaitFrame for now
-    // TODO: Re-enable performance counter conversion when extension is loaded
-    return state.frame_state.predictedDisplayTime;
+    const builtin = @import("builtin");
+    const current_time = switch (builtin.os.tag) {
+        .windows => @import("platform/windows.zig").convertPerformanceCounterToTime(
+            state.data.instance,
+            state.extensions.xrConvertWin32PerformanceCounterToTimeKHR,
+        ),
+        .linux => @import("platform/linux.zig").convertPerformanceCounterToTime(
+            state.data.instance,
+            null,
+        ),
+        else => state.frame_state.predictedDisplayTime,
+    };
+    const predicted_time = state.frame_state.predictedDisplayTime;
+
+    return @max(current_time, predicted_time);
 }
 
 // Helper functions for matrix math
 fn xrProjectionMatrix(fov: c.XrFovf) c.Matrix {
-    // Standard VR near/far planes
-    const near: f32 = 0.1;
-    const far: f32 = 100.0;
+    const near: f32 = @floatCast(c.RL_CULL_DISTANCE_NEAR);
+    const far: f32 = @floatCast(c.RL_CULL_DISTANCE_FAR);
 
     const tan_left = std.math.tan(fov.angleLeft);
     const tan_right = std.math.tan(fov.angleRight);
@@ -400,29 +375,7 @@ fn xrMatrix(pose: c.XrPosef) c.Matrix {
         .z = pose.orientation.z,
         .w = pose.orientation.w,
     });
-    // Match C++ reference: rotation * translation
     return c.MatrixMultiply(rotation, translation);
-}
-
-fn poseToViewMatrix(pose: c.XrPosef) c.Matrix {
-    // View matrix is the inverse of the camera's world transform
-    // Invert the quaternion (conjugate for unit quaternions: negate x,y,z)
-    const quat_inv = c.Quaternion{
-        .x = -pose.orientation.x,
-        .y = -pose.orientation.y,
-        .z = -pose.orientation.z,
-        .w = pose.orientation.w,
-    };
-
-    const rotation_inv = c.QuaternionToMatrix(quat_inv);
-
-    // Rotate the negated position by the inverse rotation
-    const neg_pos = c.Vector3{ .x = -pose.position.x, .y = -pose.position.y, .z = -pose.position.z };
-    const translated_pos = c.Vector3Transform(neg_pos, rotation_inv);
-
-    // Build final view matrix: inverse_rotation * inverse_translation
-    const translation_inv = c.MatrixTranslate(translated_pos.x, translated_pos.y, translated_pos.z);
-    return c.MatrixMultiply(rotation_inv, translation_inv);
 }
 
 fn matrixInvert(mat: c.Matrix) c.Matrix {
