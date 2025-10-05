@@ -3,9 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = @cImport({
-    @cInclude("openxr/openxr.h");
-});
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 const RefreshRateError = error{
     ExtensionNotSupported,
@@ -19,22 +17,22 @@ var xrEnumerateDisplayRefreshRatesFB: ?*const fn (
     u32,
     *u32,
     [*]f32,
-) callconv(.C) c.XrResult = null;
+) callconv(.c) c.XrResult = null;
 
 var xrGetDisplayRefreshRateFB: ?*const fn (
     c.XrSession,
     *f32,
-) callconv(.C) c.XrResult = null;
+) callconv(.c) c.XrResult = null;
 
 var xrRequestDisplayRefreshRateFB: ?*const fn (
     c.XrSession,
     f32,
-) callconv(.C) c.XrResult = null;
+) callconv(.c) c.XrResult = null;
 
 pub fn loadRefreshRateExtension(instance: c.XrInstance) bool {
-    var enum_func: ?*anyopaque = null;
-    var get_func: ?*anyopaque = null;
-    var set_func: ?*anyopaque = null;
+    var enum_func: c.PFN_xrVoidFunction = null;
+    var get_func: c.PFN_xrVoidFunction = null;
+    var set_func: c.PFN_xrVoidFunction = null;
 
     var result = c.xrGetInstanceProcAddr(
         instance,

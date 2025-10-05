@@ -1,8 +1,5 @@
 const rl = @import("rlOpenXR");
-const c = @cImport({
-    @cInclude("raylib.h");
-    @cInclude("raymath.h");
-});
+const c = rl.c; // Use the library's C imports to avoid type mismatches
 
 pub fn main() !void {
     // Initialization
@@ -20,8 +17,6 @@ pub fn main() !void {
         .fovy = 45.0,
         .projection = c.CAMERA_PERSPECTIVE,
     };
-
-    c.SetCameraMode(camera, c.CAMERA_FREE);
 
     // OpenXR is responsible for frame timing, disable raylib VSync
     c.SetTargetFPS(-1);
@@ -48,7 +43,7 @@ pub fn main() !void {
             rl.updateCamera(&camera); // Update camera from HMD if available
         }
 
-        c.UpdateCamera(&camera); // Mouse control for debug
+        c.UpdateCamera(&camera, c.CAMERA_FREE); // Mouse control for debug
 
         // Draw
         c.ClearBackground(c.RAYWHITE); // Clear window if OpenXR skips frame

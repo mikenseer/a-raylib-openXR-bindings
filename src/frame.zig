@@ -3,12 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = @cImport({
-    @cInclude("raylib.h");
-    @cInclude("raymath.h");
-    @cInclude("rlgl.h");
-    @cInclude("openxr/openxr.h");
-});
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 pub fn updateOpenXR(state: *main.State) void {
     // Poll OpenXR events
@@ -395,7 +390,6 @@ pub fn beginMockHMD(state: *main.State) bool {
         .vResolution = 1200,
         .hScreenSize = 0.133793,
         .vScreenSize = 0.0669,
-        .vScreenCenter = 0.04678,
         .eyeToScreenDistance = 0.041,
         .lensSeparationDistance = 0.07,
         .interpupillaryDistance = 0.07,

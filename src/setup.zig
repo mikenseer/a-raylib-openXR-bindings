@@ -3,11 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = @cImport({
-    @cInclude("raylib.h");
-    @cInclude("rlgl.h");
-    @cInclude("openxr/openxr.h");
-});
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 pub fn setupOpenXR(state: *main.State) !void {
     var result: c.XrResult = c.XR_SUCCESS;
@@ -33,8 +29,8 @@ pub fn setupOpenXR(state: *main.State) !void {
 
     // Check for required and optional extensions
     var opengl_supported = false;
-    var enabled_exts = std.ArrayList([*:0]const u8).init(state.allocator);
-    defer enabled_exts.deinit();
+    var enabled_exts = std.ArrayList([*:0]const u8).initCapacity(state.allocator, 0) catch unreachable;
+    defer enabled_exts.deinit(state.allocator);
 
     // Required extensions (platform-specific OpenGL)
     const opengl_ext = if (@import("builtin").os.tag == .windows)
@@ -44,13 +40,13 @@ pub fn setupOpenXR(state: *main.State) !void {
     else
         c.XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
 
-    try enabled_exts.append(opengl_ext);
+    try enabled_exts.append(state.allocator, opengl_ext);
 
     // Optional but useful extensions
-    try enabled_exts.append(c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    try enabled_exts.append(state.allocator, c.XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     if (@import("builtin").os.tag == .windows) {
-        try enabled_exts.append(c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
+        try enabled_exts.append(state.allocator, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
     }
 
     std.debug.print("Runtime supports {d} extensions:\n", .{ext_count});
@@ -58,18 +54,18 @@ pub fn setupOpenXR(state: *main.State) !void {
         const ext_name = std.mem.sliceTo(&ext.extensionName, 0);
         std.debug.print("  {s} v{d}\n", .{ ext_name, ext.extensionVersion });
 
-        if (std.mem.eql(u8, ext_name, std.mem.span(opengl_ext))) {
+        if (std.mem.eql(u8, ext_name, std.mem.sliceTo(opengl_ext, 0))) {
             opengl_supported = true;
         }
 
         if (std.mem.eql(u8, ext_name, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) {
             state.extensions.depth_enabled = true;
-            try enabled_exts.append(c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
+            try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
         }
 
         // Quest-specific refresh rate extension
         if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
-            try enabled_exts.append("XR_FB_display_refresh_rate");
+            try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
         }
     }
 
@@ -80,8 +76,8 @@ pub fn setupOpenXR(state: *main.State) !void {
 
     // Create XrInstance
     var app_info = std.mem.zeroes(c.XrApplicationInfo);
-    @memcpy(app_info.applicationName[0..17], "rlOpenXR-Zig App");
-    @memcpy(app_info.engineName[0..18], "Raylib (rlOpenXR)");
+    @memcpy(app_info.applicationName[0..16], "rlOpenXR-Zig App");
+    @memcpy(app_info.engineName[0..17], "Raylib (rlOpenXR)");
     app_info.applicationVersion = 1;
     app_info.engineVersion = 1;
     app_info.apiVersion = c.XR_CURRENT_API_VERSION;
@@ -148,7 +144,7 @@ pub fn setupOpenXR(state: *main.State) !void {
         return error.InitializationFailed;
     }
 
-    try state.viewconfig_views.resize(view_count);
+    try state.viewconfig_views.resize(state.allocator, view_count);
     for (state.viewconfig_views.items) |*view| {
         view.* = .{ .type = c.XR_TYPE_VIEW_CONFIGURATION_VIEW, .next = null };
     }
@@ -189,7 +185,7 @@ fn loadExtensionFunctions(state: *main.State) !void {
     var result: c.XrResult = undefined;
 
     // Get OpenGL graphics requirements function
-    var get_gl_reqs: ?*anyopaque = null;
+    var get_gl_reqs: c.PFN_xrVoidFunction = null;
     result = c.xrGetInstanceProcAddr(
         state.data.instance,
         "xrGetOpenGLGraphicsRequirementsKHR",
@@ -202,7 +198,7 @@ fn loadExtensionFunctions(state: *main.State) !void {
 
     // Platform-specific time conversion (Windows only)
     if (@import("builtin").os.tag == .windows) {
-        var convert_time: ?*anyopaque = null;
+        var convert_time: c.PFN_xrVoidFunction = null;
         result = c.xrGetInstanceProcAddr(
             state.data.instance,
             "xrConvertWin32PerformanceCounterToTimeKHR",
@@ -214,7 +210,7 @@ fn loadExtensionFunctions(state: *main.State) !void {
     }
 
     // Debug messenger (optional)
-    var create_debug: ?*anyopaque = null;
+    var create_debug: c.PFN_xrVoidFunction = null;
     result = c.xrGetInstanceProcAddr(
         state.data.instance,
         "xrCreateDebugUtilsMessengerEXT",
@@ -324,7 +320,7 @@ fn createSwapchains(state: *main.State) !void {
     const swapchain_height = state.viewconfig_views.items[0].recommendedImageRectHeight;
 
     // Create color swapchain
-    const color_format: i64 = c.GL_SRGB8_ALPHA8;
+    const color_format: i64 = 0x8C43; // GL_SRGB8_ALPHA8 (not in gl.h, but in glext.h)
     const swapchain_create_info = c.XrSwapchainCreateInfo{
         .type = c.XR_TYPE_SWAPCHAIN_CREATE_INFO,
         .next = null,
@@ -351,7 +347,7 @@ fn createSwapchains(state: *main.State) !void {
         return error.SwapchainCreationFailed;
     }
 
-    try state.swapchain_images.resize(image_count);
+    try state.swapchain_images.resize(state.allocator, image_count);
     for (state.swapchain_images.items) |*img| {
         img.* = .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR, .next = null, .image = 0 };
     }
@@ -369,11 +365,11 @@ fn createSwapchains(state: *main.State) !void {
     std.debug.print("Created swapchain: {d}x{d} with {d} images\n", .{ swapchain_width, swapchain_height, image_count });
 
     // Create framebuffer
-    state.fbo = c.rlLoadFramebuffer(swapchain_width, swapchain_height);
+    state.fbo = c.rlLoadFramebuffer(); // raylib 5.x - size is set when attaching textures
 
     // Create depth swapchain if supported
     if (state.extensions.depth_enabled) {
-        const depth_format: i64 = c.GL_DEPTH_COMPONENT16;
+        const depth_format: i64 = 0x81A5; // GL_DEPTH_COMPONENT16
 
         // Check if depth format is supported
         var depth_supported = false;
@@ -407,7 +403,7 @@ fn createSwapchains(state: *main.State) !void {
                 var depth_image_count: u32 = 0;
                 result = c.xrEnumerateSwapchainImages(state.depth_swapchain, 0, &depth_image_count, null);
                 if (main.xrCheck(result, "Got depth swapchain image count", .{})) {
-                    try state.depth_swapchain_images.resize(depth_image_count);
+                    try state.depth_swapchain_images.resize(state.allocator, depth_image_count);
                     for (state.depth_swapchain_images.items) |*img| {
                         img.* = .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR, .next = null, .image = 0 };
                     }
@@ -439,13 +435,13 @@ fn initializeFrameStructures(state: *main.State) !void {
     const view_count = state.viewconfig_views.items.len;
 
     // Initialize views
-    try state.views.resize(view_count);
+    try state.views.resize(state.allocator, view_count);
     for (state.views.items) |*view| {
         view.* = .{ .type = c.XR_TYPE_VIEW, .next = null };
     }
 
     // Initialize projection views
-    try state.projection_views.resize(view_count);
+    try state.projection_views.resize(state.allocator, view_count);
     for (state.projection_views.items, 0..) |*proj_view, i| {
         proj_view.* = .{
             .type = c.XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW,
@@ -479,7 +475,7 @@ fn initializeFrameStructures(state: *main.State) !void {
         .views = state.projection_views.items.ptr,
     };
 
-    try state.layers_pointers.append(@ptrCast(&state.layer_projection));
+    try state.layers_pointers.append(state.allocator, @ptrCast(&state.layer_projection));
 }
 
 // Helper print functions

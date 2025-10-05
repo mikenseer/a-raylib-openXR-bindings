@@ -1,11 +1,6 @@
 const std = @import("std");
-const c = @cImport({
-    @cDefine("XR_USE_PLATFORM_WIN32", "1");
-    @cDefine("XR_USE_GRAPHICS_API_OPENGL", "1");
-    @cInclude("windows.h");
-    @cInclude("openxr/openxr.h");
-    @cInclude("openxr/openxr_platform.h");
-});
+const main = @import("../rlOpenXR.zig");
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 pub const GraphicsBinding = c.XrGraphicsBindingOpenGLWin32KHR;
 
@@ -18,12 +13,12 @@ pub fn getCurrentGraphicsBinding() GraphicsBinding {
     };
 }
 
-extern "opengl32" fn wglGetCurrentDC() callconv(.C) c.HDC;
-extern "opengl32" fn wglGetCurrentContext() callconv(.C) c.HGLRC;
+extern "opengl32" fn wglGetCurrentDC() callconv(.c) c.HDC;
+extern "opengl32" fn wglGetCurrentContext() callconv(.c) c.HGLRC;
 
 pub fn convertPerformanceCounterToTime(
     instance: c.XrInstance,
-    convert_fn: ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.C) c.XrResult,
+    convert_fn: ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.c) c.XrResult,
 ) c.XrTime {
     var qpc: c.LARGE_INTEGER = undefined;
     _ = c.QueryPerformanceCounter(&qpc);

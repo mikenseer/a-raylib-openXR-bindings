@@ -2,13 +2,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 // Import C libraries
-const c = @cImport({
-    @cInclude("raylib.h");
-    @cInclude("raymath.h");
-    @cInclude("rlgl.h");
+pub const c = @cImport({
+    // Include OpenXR first (with platform headers)
     @cInclude("openxr/openxr.h");
 
     if (builtin.os.tag == .windows) {
+        @cDefine("WIN32_LEAN_AND_MEAN", "1"); // Minimize Windows.h
+        @cDefine("NOMINMAX", "1"); // Prevent min/max macros
+        @cDefine("NOGDI", "1"); // Exclude GDI (conflicts with raylib Rectangle)
+        @cDefine("NOUSER", "1"); // Exclude USER (conflicts with CloseWindow, ShowCursor)
+        @cInclude("windows.h"); // Required for basic types
+        @cInclude("gl/gl.h"); // For HDC, HGLRC from OpenGL context
+        // Define IUnknown as void* to avoid COM headers (we don't use those extensions)
+        @cDefine("IUnknown", "void");
         @cDefine("XR_USE_PLATFORM_WIN32", "1");
         @cDefine("XR_USE_GRAPHICS_API_OPENGL", "1");
         @cInclude("openxr/openxr_platform.h");
@@ -21,13 +27,19 @@ const c = @cImport({
         @cDefine("XR_USE_GRAPHICS_API_OPENGL_ES", "1");
         @cInclude("openxr/openxr_platform.h");
     }
+
+    // Include raylib AFTER OpenXR to avoid name conflicts
+    @cInclude("raylib.h");
+    @cInclude("raymath.h");
+    @cInclude("rlgl.h");
 });
 
 // Platform-specific imports
 const platform = switch (builtin.os.tag) {
     .windows => @import("platform/windows.zig"),
     .linux => @import("platform/linux.zig"),
-    .android => @import("platform/android.zig"),
+    // TODO: Android support - .android tag doesn't exist in Zig 0.15.1
+    // .android => @import("platform/android.zig"),
     else => @compileError("Unsupported platform for OpenXR"),
 };
 
@@ -81,14 +93,14 @@ pub const HandData = extern struct {
 const ViewCount = 2;
 
 const Extensions = struct {
-    xrGetOpenGLGraphicsRequirementsKHR: ?*const fn (c.XrInstance, c.XrSystemId, *c.XrGraphicsRequirementsOpenGLKHR) callconv(.C) c.XrResult = null,
-    xrConvertWin32PerformanceCounterToTimeKHR: ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.C) c.XrResult = null,
-    xrCreateDebugUtilsMessengerEXT: ?*const fn (c.XrInstance, *const c.XrDebugUtilsMessengerCreateInfoEXT, *c.XrDebugUtilsMessengerEXT) callconv(.C) c.XrResult = null,
+    xrGetOpenGLGraphicsRequirementsKHR: ?*const fn (c.XrInstance, c.XrSystemId, *c.XrGraphicsRequirementsOpenGLKHR) callconv(.c) c.XrResult = null,
+    xrConvertWin32PerformanceCounterToTimeKHR: ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.c) c.XrResult = null,
+    xrCreateDebugUtilsMessengerEXT: ?*const fn (c.XrInstance, *const c.XrDebugUtilsMessengerCreateInfoEXT, *c.XrDebugUtilsMessengerEXT) callconv(.c) c.XrResult = null,
     debug_messenger_handle: c.XrDebugUtilsMessengerEXT = null,
     depth_enabled: bool = false,
 };
 
-const State = struct {
+pub const State = struct {
     data: Data = .{
         .instance = null,
         .system_id = 0,
@@ -144,7 +156,7 @@ pub const OpenXRError = error{
     OutOfMemory,
 };
 
-fn xrCheck(result: c.XrResult, comptime fmt: []const u8, args: anytype) bool {
+pub fn xrCheck(result: c.XrResult, comptime fmt: []const u8, args: anytype) bool {
     if (result >= 0) return true; // XR_SUCCEEDED
 
     var result_string: [c.XR_MAX_RESULT_STRING_SIZE]u8 = undefined;
@@ -178,13 +190,13 @@ pub fn setupWithAllocator(allocator: std.mem.Allocator) bool {
 
     state = State{
         .allocator = allocator,
-        .viewconfig_views = std.ArrayList(c.XrViewConfigurationView).init(allocator),
-        .projection_views = std.ArrayList(c.XrCompositionLayerProjectionView).init(allocator),
-        .depth_infos = std.ArrayList(c.XrCompositionLayerDepthInfoKHR).init(allocator),
-        .layers_pointers = std.ArrayList(*c.XrCompositionLayerBaseHeader).init(allocator),
-        .views = std.ArrayList(c.XrView).init(allocator),
-        .swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).init(allocator),
-        .depth_swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).init(allocator),
+        .viewconfig_views = std.ArrayList(c.XrViewConfigurationView).initCapacity(allocator, 0) catch unreachable,
+        .projection_views = std.ArrayList(c.XrCompositionLayerProjectionView).initCapacity(allocator, 0) catch unreachable,
+        .depth_infos = std.ArrayList(c.XrCompositionLayerDepthInfoKHR).initCapacity(allocator, 0) catch unreachable,
+        .layers_pointers = std.ArrayList(*c.XrCompositionLayerBaseHeader).initCapacity(allocator, 0) catch unreachable,
+        .views = std.ArrayList(c.XrView).initCapacity(allocator, 0) catch unreachable,
+        .swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).initCapacity(allocator, 0) catch unreachable,
+        .depth_swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).initCapacity(allocator, 0) catch unreachable,
     };
 
     const setup_impl = @import("setup.zig");
@@ -216,13 +228,13 @@ pub fn shutdown() void {
         }
 
         // Free array lists
-        s.viewconfig_views.deinit();
-        s.projection_views.deinit();
-        s.depth_infos.deinit();
-        s.layers_pointers.deinit();
-        s.views.deinit();
-        s.swapchain_images.deinit();
-        s.depth_swapchain_images.deinit();
+        s.viewconfig_views.deinit(s.allocator);
+        s.projection_views.deinit(s.allocator);
+        s.depth_infos.deinit(s.allocator);
+        s.layers_pointers.deinit(s.allocator);
+        s.views.deinit(s.allocator);
+        s.swapchain_images.deinit(s.allocator);
+        s.depth_swapchain_images.deinit(s.allocator);
 
         state = null;
     }
@@ -350,20 +362,26 @@ pub fn blitToWindow(eye: Eye, keep_aspect_ratio: bool) void {
         c.rlDisableFramebuffer();
         c.ClearBackground(c.BLACK);
 
-        c.glBlitNamedFramebuffer(
-            s.active_fbo,
-            0,
-            src.offset.x,
-            src.offset.y,
-            src.offset.x + src.extent.width,
-            src.offset.y + src.extent.height,
-            dest.offset.x,
-            dest.offset.y,
-            dest.offset.x + dest.extent.width,
-            dest.offset.y + dest.extent.height,
-            c.GL_COLOR_BUFFER_BIT,
-            c.GL_LINEAR,
-        );
+        // Draw the VR framebuffer texture to the window
+        const texture_id = if (s.swapchain_images.items.len > 0) s.swapchain_images.items[0].image else 0;
+        c.rlSetTexture(texture_id);
+        c.rlBegin(c.RL_QUADS);
+
+        // Flip Y coordinates for proper orientation
+        c.rlTexCoord2f(0.0, 1.0);
+        c.rlVertex2f(@floatFromInt(dest.offset.x), @floatFromInt(dest.offset.y));
+
+        c.rlTexCoord2f(1.0, 1.0);
+        c.rlVertex2f(@floatFromInt(dest.offset.x + dest.extent.width), @floatFromInt(dest.offset.y));
+
+        c.rlTexCoord2f(1.0, 0.0);
+        c.rlVertex2f(@floatFromInt(dest.offset.x + dest.extent.width), @floatFromInt(dest.offset.y + dest.extent.height));
+
+        c.rlTexCoord2f(0.0, 0.0);
+        c.rlVertex2f(@floatFromInt(dest.offset.x), @floatFromInt(dest.offset.y + dest.extent.height));
+
+        c.rlEnd();
+        c.rlSetTexture(0);
 
         c.rlEnableFramebuffer(s.active_fbo);
     }

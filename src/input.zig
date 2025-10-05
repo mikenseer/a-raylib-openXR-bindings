@@ -3,11 +3,7 @@
 
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
-const c = @cImport({
-    @cInclude("raylib.h");
-    @cInclude("raymath.h");
-    @cInclude("openxr/openxr.h");
-});
+const c = main.c; // Use main's C imports to avoid type mismatches
 
 pub fn updateHandsOpenXR(state: *main.State, left: ?*main.HandData, right: ?*main.HandData) void {
     const time = @import("frame.zig").getTimeOpenXR(state);
