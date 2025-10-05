@@ -262,13 +262,10 @@ Contributions are welcome! Please ensure:
 - Prefer error unions over panics
 - Test on both VR and non-VR systems
 
-## License
-
-[Specify your license here - match rlOpenXR's license or choose your own]
-
 ## Acknowledgments
 
 - **FireFlyForLife** - Original [rlOpenXR](https://github.com/FireFlyForLife/rlOpenXR) C++ implementation
+- **s-ol** - [openxr-zig](https://github.com/s-ol/openxr-zig) OpenXR binding generator for Zig
 - **raysan5** - [raylib](https://www.raylib.com/) game framework
 - **Khronos Group** - OpenXR standard and SDK
 - **Meta** - Quest platform and OpenXR runtime
@@ -276,6 +273,7 @@ Contributions are welcome! Please ensure:
 ## Links
 
 - [rlOpenXR Original (C++)](https://github.com/FireFlyForLife/rlOpenXR)
+- [openxr-zig](https://github.com/s-ol/openxr-zig)
 - [raylib](https://www.raylib.com/)
 - [OpenXR Specification](https://www.khronos.org/openxr/)
 - [Zig Programming Language](https://ziglang.org/)
