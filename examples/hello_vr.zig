@@ -28,6 +28,17 @@ pub fn main() !void {
     }
     defer if (initialized_openxr) rl.shutdown();
 
+    // Resize window to match VR eye aspect ratio
+    if (initialized_openxr) {
+        if (rl.getEyeResolution()) |res| {
+            const aspect_ratio = @as(f32, @floatFromInt(res.width)) / @as(f32, @floatFromInt(res.height));
+
+            // Keep height at 900, adjust width to match aspect ratio
+            const new_width: i32 = @intFromFloat(900.0 * aspect_ratio);
+            c.SetWindowSize(new_width, 900);
+        }
+    }
+
     // Try to load refresh rate extension (Quest/Meta specific)
     if (initialized_openxr) {
         if (rl.loadRefreshRateExtension()) {
@@ -59,24 +70,20 @@ pub fn main() !void {
 
             c.BeginMode3D(camera);
 
-            // Draw scene
-            c.DrawCube(.{ .x = -3, .y = 0, .z = 0 }, 2.0, 2.0, 2.0, c.RED);
-            c.DrawCube(.{ .x = 3, .y = 0, .z = 0 }, 2.0, 2.0, 2.0, c.GREEN);
-            c.DrawCube(.{ .x = 0, .y = 0, .z = -3 }, 2.0, 2.0, 2.0, c.YELLOW);
+            // Draw scene - cubes at y=1 so they're above the grid
+            c.DrawCube(.{ .x = -3, .y = 1, .z = 0 }, 2.0, 2.0, 2.0, c.RED);
+            c.DrawCube(.{ .x = 3, .y = 1, .z = 0 }, 2.0, 2.0, 2.0, c.GREEN);
+            c.DrawCube(.{ .x = 0, .y = 1, .z = -3 }, 2.0, 2.0, 2.0, c.YELLOW);
             c.DrawGrid(10, 1.0);
 
             c.EndMode3D();
-
-            // Blit to window for flatscreen preview
-            const keep_aspect_ratio = true;
-            rl.blitToWindow(.both, keep_aspect_ratio);
         } else {
             // Fallback non-VR rendering
             c.BeginMode3D(camera);
 
-            c.DrawCube(.{ .x = -3, .y = 0, .z = 0 }, 2.0, 2.0, 2.0, c.RED);
-            c.DrawCube(.{ .x = 3, .y = 0, .z = 0 }, 2.0, 2.0, 2.0, c.GREEN);
-            c.DrawCube(.{ .x = 0, .y = 0, .z = -3 }, 2.0, 2.0, 2.0, c.YELLOW);
+            c.DrawCube(.{ .x = -3, .y = 1, .z = 0 }, 2.0, 2.0, 2.0, c.RED);
+            c.DrawCube(.{ .x = 3, .y = 1, .z = 0 }, 2.0, 2.0, 2.0, c.GREEN);
+            c.DrawCube(.{ .x = 0, .y = 1, .z = -3 }, 2.0, 2.0, 2.0, c.YELLOW);
             c.DrawGrid(10, 1.0);
 
             c.EndMode3D();
@@ -88,6 +95,12 @@ pub fn main() !void {
 
         // Draw UI overlay
         c.BeginDrawing();
+
+        // Blit VR view to window INSIDE BeginDrawing
+        if (initialized_openxr and rendering_vr) {
+            const keep_aspect_ratio = false; // Window is already correct aspect ratio
+            rl.blitToWindow(.left, keep_aspect_ratio);
+        }
 
         c.DrawFPS(10, 10);
 
