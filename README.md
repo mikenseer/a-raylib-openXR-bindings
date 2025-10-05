@@ -6,6 +6,8 @@
 
 Zig bindings for raylib with OpenXR VR support, providing cross-platform VR development for PC (Windows, Linux) and Android (Quest 3).
 
+https://github.com/user-attachments/assets/HelloVR-rlOpenXR-Zig.mp4
+
 </div>
 
 ## Features
