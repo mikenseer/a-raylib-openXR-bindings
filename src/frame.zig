@@ -246,7 +246,7 @@ pub fn beginOpenXR(state: *main.State) bool {
     const view_matrix = matrixInvert(xrMatrix(view_location.pose));
     const view_offset_left = matrixMultiply(xrMatrix(state.views.items[0].pose), view_matrix);
     const view_offset_right = matrixMultiply(xrMatrix(state.views.items[1].pose), view_matrix);
-    c.rlSetMatrixViewOffsetStereo(view_offset_left, view_offset_right);
+    c.rlSetMatrixViewOffsetStereo(view_offset_right, view_offset_left);
 
     return true;
 }
