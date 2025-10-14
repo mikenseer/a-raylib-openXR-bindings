@@ -96,6 +96,65 @@ pub fn syncSingleActionSetOpenXR(state: *main.State, action_set: c.XrActionSet) 
     _ = main.xrCheck(result, "Failed to sync actions", .{});
 }
 
+pub fn getActionFloatOpenXR(state: *main.State, action: c.XrAction, subaction_path: c.XrPath) f32 {
+    const get_info = c.XrActionStateGetInfo{
+        .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
+        .next = null,
+        .action = action,
+        .subactionPath = subaction_path,
+    };
+
+    var action_state: c.XrActionStateFloat = .{
+        .type = c.XR_TYPE_ACTION_STATE_FLOAT,
+        .next = null,
+        .currentState = 0.0,
+        .changedSinceLastSync = 0,
+        .lastChangeTime = 0,
+        .isActive = 0,
+    };
+
+    const result = c.xrGetActionStateFloat(state.data.session, &get_info, &action_state);
+    if (!main.xrCheck(result, "Failed to get action float state", .{})) {
+        return 0.0;
+    }
+
+    if (action_state.isActive == 0) {
+        return 0.0;
+    }
+
+    return action_state.currentState;
+}
+
+pub fn getActionBooleanClickedOpenXR(state: *main.State, action: c.XrAction, subaction_path: c.XrPath) bool {
+    const get_info = c.XrActionStateGetInfo{
+        .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
+        .next = null,
+        .action = action,
+        .subactionPath = subaction_path,
+    };
+
+    var action_state: c.XrActionStateBoolean = .{
+        .type = c.XR_TYPE_ACTION_STATE_BOOLEAN,
+        .next = null,
+        .currentState = 0,
+        .changedSinceLastSync = 0,
+        .lastChangeTime = 0,
+        .isActive = 0,
+    };
+
+    const result = c.xrGetActionStateBoolean(state.data.session, &get_info, &action_state);
+    if (!main.xrCheck(result, "Failed to get action boolean state", .{})) {
+        return false;
+    }
+
+    if (action_state.isActive == 0) {
+        return false;
+    }
+
+    // "Clicked" means the button is pressed AND has changed since last sync
+    return action_state.currentState != 0 and action_state.changedSinceLastSync != 0;
+}
+
 fn quaternionEquals(a: c.Quaternion, b: c.Quaternion) bool {
     const epsilon = 0.0001;
     return @abs(a.x - b.x) < epsilon and

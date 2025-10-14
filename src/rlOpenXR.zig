@@ -458,6 +458,22 @@ pub fn syncSingleActionSet(action_set: c.XrActionSet) void {
     }
 }
 
+pub fn getActionFloat(action: c.XrAction, subaction_path: c.XrPath) f32 {
+    if (state) |*s| {
+        const input_impl = @import("input.zig");
+        return input_impl.getActionFloatOpenXR(s, action, subaction_path);
+    }
+    return 0.0;
+}
+
+pub fn getActionBooleanClicked(action: c.XrAction, subaction_path: c.XrPath) bool {
+    if (state) |*s| {
+        const input_impl = @import("input.zig");
+        return input_impl.getActionBooleanClickedOpenXR(s, action, subaction_path);
+    }
+    return false;
+}
+
 //==============================================================================
 // Public API - Refresh Rate (72-300Hz support)
 //==============================================================================
