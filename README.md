@@ -4,7 +4,12 @@
 
 # rlOpenXR-Zig
 
-Zig bindings for raylib with OpenXR VR support, providing cross-platform VR development for PC (Windows, Linux) and Android (Quest 3).
+Zig bindings for raylib with OpenXR VR support, providing cross-platform VR development for PC and mobile.
+
+**Platform Status:**
+- ✅ **Windows** - Confirmed working (SteamVR/Oculus)
+- ⚠️ **Linux** - Should work but needs testing (Monado/SteamVR)
+- ⚠️ **Android** - Should work but needs testing (Quest 2/3/Pro)
 
 
 
@@ -16,10 +21,11 @@ https://github.com/user-attachments/assets/59cde9de-44c6-4fa1-a52a-a58aeb419cf1
 
 ## Features
 
-- **Cross-Platform VR**: Supports Windows, Linux, and Android (Quest 3)
+- **Cross-Platform VR**: Windows (confirmed), Linux and Android (should work, need testing)
 - **Automatic Fallback**: Gracefully handles systems without VR runtimes
 - **High Refresh Rate Support**: 72-300Hz display refresh rates for future-proofing
 - **Mock HMD Mode**: Test and develop without a VR headset
+- **Hand Tracking**: Full OpenXR action system for controllers and hand input
 - **Platform Detection**: Runtime detection of PC vs Android, VR vs non-VR
 - **Clean API**: Zig-idiomatic wrapper around OpenXR with error unions
 
@@ -49,6 +55,26 @@ zig build run
 ```
 
 The example will automatically detect if a VR runtime is available and fall back to mock HMD mode if not.
+
+## Examples
+
+The library includes four progressive examples demonstrating different features:
+
+```bash
+# Basic VR rendering with automatic fallback
+zig build run                    # or: zig build run-vr
+
+# Hand tracking with controller visualization
+zig build run-hands
+
+# Interactive cubes using trigger input
+zig build run-clicky-hands
+
+# Teleportation locomotion system
+zig build run-teleport
+```
+
+Each example builds on the previous one, teaching VR fundamentals step-by-step.
 
 ## Usage Example
 
@@ -183,6 +209,7 @@ src/
   rlOpenXR.zig       - Main public API
   setup.zig          - OpenXR initialization
   frame.zig          - Frame loop and rendering
+  input.zig          - Hand tracking and action input
   refresh_rate.zig   - Refresh rate configuration
   platform/
     windows.zig      - Windows-specific OpenGL context
@@ -190,7 +217,10 @@ src/
     android.zig      - Android EGL context
 
 examples/
-  hello_vr.zig       - Basic VR example with fallback
+  hello_vr.zig             - Basic VR example with fallback
+  hello_hands.zig          - Hand tracking with controller visualization
+  hello_clicky_hands.zig   - Interactive cubes with trigger input
+  hello_teleport.zig       - Teleportation locomotion system
 ```
 
 ## API Reference
@@ -203,10 +233,17 @@ examples/
 ### Frame Loop
 - `update()` - Poll OpenXR events and wait for frame
 - `updateCamera(*Camera3D)` - Update camera from HMD pose
+- `updateCameraTransform(*Transform)` - Update transform from HMD pose
 - `begin() bool` - Begin VR rendering
 - `beginMockHMD() bool` - Begin mock HMD rendering (fallback)
 - `end()` - End VR frame and submit to compositor
 - `blitToWindow(eye, keep_aspect) void` - Copy VR view to window
+
+### Hand Tracking & Input
+- `updateHands(?*HandData, ?*HandData)` - Update left/right hand tracking
+- `syncSingleActionSet(XrActionSet)` - Sync OpenXR action set
+- `getActionFloat(XrAction, XrPath) f32` - Get analog input (trigger, grip)
+- `getActionBooleanClicked(XrAction, XrPath) bool` - Get button click event
 
 ### Refresh Rate
 - `loadRefreshRateExtension() bool` - Load Meta Quest refresh rate extension
@@ -217,6 +254,7 @@ examples/
 ### State
 - `getData() ?*const Data` - Get OpenXR instance data
 - `getTime() XrTime` - Get current XR time
+- `getEyeResolution() ?struct{ width: u32, height: u32 }` - Get recommended eye resolution
 
 ## Supported Headsets
 
@@ -251,7 +289,7 @@ This repository uses a rebase-based workflow:
 
 ```bash
 git pull  # Automatically rebases (configured in .git/config)
-git rebase main  # Keep history clean
+git rebase master  # Keep history clean
 ```
 
 ### Running Tests
@@ -264,9 +302,11 @@ zig build test
 
 Contributions are welcome! Please ensure:
 - Code follows Zig style guidelines
-- Use `std.math.cast` instead of `@intCast` where possible
-- Prefer error unions over panics
+- Prefer standard library functions over low-level builtins when practical (e.g., `std.math.cast` instead of `@intCast`)
+  - This guideline encourages error unions over panics, improving robustness
+  - Use your judgment - performance-critical paths may warrant direct builtins
 - Test on both VR and non-VR systems
+- Verify examples still work after API changes
 
 ## Acknowledgments
 
