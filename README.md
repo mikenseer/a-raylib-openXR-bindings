@@ -6,14 +6,8 @@
 
 Zig bindings for raylib with OpenXR VR support, providing cross-platform VR development for PC and mobile.
 
-**Platform Status:**
-- ✅ **Windows** - Confirmed working (SteamVR/Oculus)
-- ⚠️ **Linux** - Should work but needs testing (Monado/SteamVR)
-- ⚠️ **Android** - Should work but needs testing (Quest 2/3/Pro)
+https://github.com/user-attachments/assets/fb1750bb-739d-49eb-b949-487037ddee57
 
-
-
-https://github.com/user-attachments/assets/59cde9de-44c6-4fa1-a52a-a58aeb419cf1
 
 
 
@@ -221,6 +215,7 @@ examples/
   hello_hands.zig          - Hand tracking with controller visualization
   hello_clicky_hands.zig   - Interactive cubes with trigger input
   hello_teleport.zig       - Teleportation locomotion system
+  hello_smooth_turning.zig - Joystick based smooth turning and locomotion
 ```
 
 ## API Reference
