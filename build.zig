@@ -272,6 +272,37 @@ pub fn build(b: *std.Build) void {
     const run_teleport_step = b.step("run-teleport", "Run the hello_teleport example");
     run_teleport_step.dependOn(&run_teleport_cmd.step);
 
+    // Build hello_smooth_turning example
+    const hello_smooth_turning_mod = b.createModule(.{
+        .root_source_file = b.path("examples/hello_smooth_turning.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hello_smooth_turning_mod.addImport("rlOpenXR", rlOpenXR_mod);
+
+    const hello_smooth_turning_exe = b.addExecutable(.{
+        .name = "hello_smooth_turning",
+        .root_module = hello_smooth_turning_mod,
+    });
+    hello_smooth_turning_exe.linkLibrary(rlOpenXR);
+    hello_smooth_turning_exe.linkLibrary(raylib_artifact);
+
+    const install_hello_smooth_turning = b.addInstallArtifact(hello_smooth_turning_exe, .{});
+
+    // Build step for hello_smooth_turning
+    const build_hello_smooth_turning_step = b.step("hello_smooth_turning", "Build the hello_smooth_turning example");
+    build_hello_smooth_turning_step.dependOn(&install_hello_smooth_turning.step);
+
+    // Run step for hello_smooth_turning
+    const run_smooth_turning_cmd = b.addRunArtifact(hello_smooth_turning_exe);
+    run_smooth_turning_cmd.step.dependOn(&install_hello_smooth_turning.step);
+    if (b.args) |args| {
+        run_smooth_turning_cmd.addArgs(args);
+    }
+
+    const run_smooth_turning_step = b.step("run-smooth-turning", "Run the hello_smooth_turning example");
+    run_smooth_turning_step.dependOn(&run_smooth_turning_cmd.step);
+
     // Test step
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/rlOpenXR.zig"),
