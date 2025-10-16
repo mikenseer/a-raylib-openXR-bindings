@@ -52,7 +52,7 @@ The example will automatically detect if a VR runtime is available and fall back
 
 ## Examples
 
-The library includes four progressive examples demonstrating different features:
+The library includes five progressive examples demonstrating different features:
 
 ```bash
 # Basic VR rendering with automatic fallback
@@ -66,6 +66,9 @@ zig build run-clicky-hands
 
 # Teleportation locomotion system
 zig build run-teleport
+
+# Smooth turning and locomotion with joystick input
+zig build run-smooth-turning
 ```
 
 Each example builds on the previous one, teaching VR fundamentals step-by-step.
