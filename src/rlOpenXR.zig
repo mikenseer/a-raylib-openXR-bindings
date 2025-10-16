@@ -117,6 +117,12 @@ pub const State = struct {
     graphics_binding: platform.GraphicsBinding = undefined,
     frame_state: c.XrFrameState = .{ .type = c.XR_TYPE_FRAME_STATE },
 
+    // Locomotion: Offset for play_space (position + rotation in world)
+    play_space_offset: c.XrPosef = .{
+        .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1.0 },
+        .position = .{ .x = 0, .y = 0, .z = 0 },
+    },
+
     session_running: bool = false,
     run_framecycle: bool = false,
 
@@ -472,6 +478,34 @@ pub fn getActionBooleanClicked(action: c.XrAction, subaction_path: c.XrPath) boo
         return input_impl.getActionBooleanClickedOpenXR(s, action, subaction_path);
     }
     return false;
+}
+
+//==============================================================================
+// Public API - Locomotion (Smooth Turning, Teleportation)
+//==============================================================================
+
+/// Update the play space offset for locomotion systems (smooth turning, teleportation, etc.)
+/// This recreates the OpenXR play_space reference with a new pose offset.
+/// The offset represents the position and rotation of the play space in world coordinates.
+pub fn updatePlaySpaceOffset(new_offset: c.XrPosef) !void {
+    if (state) |*s| {
+        const setup_impl = @import("setup.zig");
+        try setup_impl.updatePlaySpaceOffset(s, new_offset);
+    } else {
+        return error.NotInitialized;
+    }
+}
+
+/// Get the current play space offset
+pub fn getPlaySpaceOffset() c.XrPosef {
+    if (state) |*s| {
+        return s.play_space_offset;
+    }
+    // Return identity pose if not initialized
+    return .{
+        .orientation = .{ .x = 0, .y = 0, .z = 0, .w = 1.0 },
+        .position = .{ .x = 0, .y = 0, .z = 0 },
+    };
 }
 
 //==============================================================================
