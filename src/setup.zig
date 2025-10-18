@@ -117,6 +117,7 @@ pub fn setupOpenXR(state: *main.State) !void {
         // Quest/Meta refresh rate extension (72-120Hz support on Quest 3)
         if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
             try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
+            state.extensions.refresh_rate_enabled = true;
         }
     }
 
@@ -356,16 +357,11 @@ fn createSession(state: *main.State) !void {
         return error.SessionCreationFailed;
     }
 
-    // Load and configure refresh rate extension for 120Hz (Quest 3 support)
-    if (builtin.abi == .android) {
+    // Load refresh rate extension function pointers (Quest 3 support)
+    // Note: Actual refresh rate request happens later in frame.zig when session is SYNCHRONIZED
+    if (builtin.abi == .android and state.extensions.refresh_rate_enabled) {
         const refresh = @import("refresh_rate.zig");
-        if (refresh.loadRefreshRateExtension(state.data.instance)) {
-            if (refresh.getSupportedRefreshRates(state.data.session, state.allocator)) |rates| {
-                defer state.allocator.free(rates);
-                // Try to set 120Hz (will fall back to highest supported if not available)
-                refresh.setRefreshRate(state.data.session, 120.0) catch {};
-            } else |_| {}
-        }
+        _ = refresh.loadRefreshRateExtension(state.data.instance);
     }
 }
 
