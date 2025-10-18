@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/fb1750bb-739d-49eb-b949-487037ddee57
 
 ## Features
 
-- **Cross-Platform VR**: Windows (confirmed), Linux and Android (should work, need testing)
+- **Cross-Platform VR**: Windows and Android/Quest (confirmed), Linux (should work, needs testing)
 - **Automatic Fallback**: Gracefully handles systems without VR runtimes
 - **High Refresh Rate Support**: 72-300Hz display refresh rates for future-proofing
 - **Mock HMD Mode**: Test and develop without a VR headset
@@ -31,7 +31,8 @@ This project is a Zig port of [rlOpenXR](https://github.com/FireFlyForLife/rlOpe
 
 - **Zig 0.15.1** or later
 - **raylib** (automatically fetched by build system)
-- **OpenXR SDK** (automatically fetched by build system)
+- **OpenXR SDK** (automatically fetched by build system for PC)
+- **Meta OpenXR Mobile SDK** (required for Android VR - see Android setup below)
 - **VR Runtime** (for VR mode):
   - Windows: SteamVR or Oculus/Meta runtime
   - Linux: Monado or SteamVR
@@ -184,10 +185,35 @@ zig build -Dtarget=x86_64-linux
 
 ### Android Quest 3 APK
 
+**Prerequisites:**
+- Android NDK 25.1.8937393
+- Meta OpenXR Mobile SDK (for VR functionality)
+- See `android/README.md` for complete setup instructions
+
 ```bash
-zig build -Dtarget=aarch64-android
-# TODO: APK packaging steps
+# Configure Meta SDK (first time only)
+# Windows:
+set META_OPENXR_SDK=C:\Meta-OpenXR-SDK
+
+# Linux/Mac:
+export META_OPENXR_SDK=/path/to/Meta-OpenXR-SDK
+
+# Generate debug keystore (first time only)
+zig build android-keystore
+
+# Build APK for Quest
+zig build android
+
+# Install to connected Quest via USB
+zig build android-install
+
+# Build, install, and run
+zig build android-run
 ```
+
+**Note:** Download Meta OpenXR Mobile SDK from [Meta Developer Downloads](https://developer.oculus.com/downloads/package/oculus-openxr-mobile-sdk/)
+
+See `android/README.md` for detailed Android setup and troubleshooting.
 
 ## Testing Without VR
 
@@ -275,9 +301,11 @@ examples/
 - Set `XR_RUNTIME_JSON` environment variable if needed
 
 **Quest APK not working:**
-- Enable developer mode on Quest
-- Use `adb install` to sideload
-- Check Logcat for OpenXR errors
+- Ensure Meta OpenXR Mobile SDK is installed and `META_OPENXR_SDK` environment variable is set
+- Enable developer mode on Quest (Settings → System → Developer)
+- Connect Quest via USB and allow USB debugging
+- Check `adb logcat | grep rlOpenXR` for detailed error logs
+- See `android/README.md` for full troubleshooting guide
 
 ## Development
 
