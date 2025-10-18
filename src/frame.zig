@@ -4,6 +4,7 @@
 const std = @import("std");
 const main = @import("rlOpenXR.zig");
 const c = main.c; // Use main's C imports to avoid type mismatches
+const builtin = @import("builtin");
 
 pub fn updateOpenXR(state: *main.State) void {
     // Poll OpenXR events
@@ -317,8 +318,10 @@ pub fn updateCameraOpenXR(state: *main.State, camera: *c.Camera3D) void {
 }
 
 pub fn getTimeOpenXR(state: *main.State) c.XrTime {
-    const builtin = @import("builtin");
-    const current_time = switch (builtin.os.tag) {
+    const current_time = if (builtin.abi == .android)
+        // Android: just use predicted time (no performance counter conversion needed)
+        state.frame_state.predictedDisplayTime
+    else switch (builtin.os.tag) {
         .windows => @import("platform/windows.zig").convertPerformanceCounterToTime(
             state.data.instance,
             state.extensions.xrConvertWin32PerformanceCounterToTimeKHR,

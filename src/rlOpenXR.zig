@@ -6,7 +6,16 @@ pub const c = @cImport({
     // Include OpenXR first (with platform headers)
     @cInclude("openxr/openxr.h");
 
-    if (builtin.os.tag == .windows) {
+    // Check for Android FIRST (it uses os.tag=.linux with abi=.android)
+    if (builtin.abi == .android) {
+        // Include Android/EGL headers BEFORE OpenXR platform headers
+        @cInclude("jni.h");
+        @cInclude("EGL/egl.h");
+        @cInclude("GLES3/gl3.h");
+        @cDefine("XR_USE_PLATFORM_ANDROID", "1");
+        @cDefine("XR_USE_GRAPHICS_API_OPENGL_ES", "1");
+        @cInclude("openxr/openxr_platform.h");
+    } else if (builtin.os.tag == .windows) {
         @cDefine("WIN32_LEAN_AND_MEAN", "1"); // Minimize Windows.h
         @cDefine("NOMINMAX", "1"); // Prevent min/max macros
         @cDefine("NOGDI", "1"); // Exclude GDI (conflicts with raylib Rectangle)
@@ -22,10 +31,6 @@ pub const c = @cImport({
         @cDefine("XR_USE_PLATFORM_XLIB", "1");
         @cDefine("XR_USE_GRAPHICS_API_OPENGL", "1");
         @cInclude("openxr/openxr_platform.h");
-    } else if (builtin.os.tag == .android) {
-        @cDefine("XR_USE_PLATFORM_ANDROID", "1");
-        @cDefine("XR_USE_GRAPHICS_API_OPENGL_ES", "1");
-        @cInclude("openxr/openxr_platform.h");
     }
 
     // Include raylib AFTER OpenXR to avoid name conflicts
@@ -35,11 +40,11 @@ pub const c = @cImport({
 });
 
 // Platform-specific imports
-const platform = switch (builtin.os.tag) {
+const platform = if (builtin.abi == .android)
+    @import("platform/android.zig")
+else switch (builtin.os.tag) {
     .windows => @import("platform/windows.zig"),
     .linux => @import("platform/linux.zig"),
-    // TODO: Android support - .android tag doesn't exist in Zig 0.15.1
-    // .android => @import("platform/android.zig"),
     else => @compileError("Unsupported platform for OpenXR"),
 };
 
@@ -92,9 +97,24 @@ pub const HandData = extern struct {
 
 const ViewCount = 2;
 
+// Platform-specific OpenXR types (exported for use in setup.zig)
+pub const XrGraphicsRequirements = if (builtin.abi == .android)
+    c.XrGraphicsRequirementsOpenGLESKHR
+else
+    c.XrGraphicsRequirementsOpenGLKHR;
+
+pub const XrSwapchainImage = if (builtin.abi == .android)
+    c.XrSwapchainImageOpenGLESKHR
+else
+    c.XrSwapchainImageOpenGLKHR;
+
 const Extensions = struct {
-    xrGetOpenGLGraphicsRequirementsKHR: ?*const fn (c.XrInstance, c.XrSystemId, *c.XrGraphicsRequirementsOpenGLKHR) callconv(.c) c.XrResult = null,
-    xrConvertWin32PerformanceCounterToTimeKHR: ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.c) c.XrResult = null,
+    xrGetOpenGLGraphicsRequirementsKHR: ?*const fn (c.XrInstance, c.XrSystemId, *XrGraphicsRequirements) callconv(.c) c.XrResult = null,
+    // Windows-specific extension for performance counter time conversion
+    xrConvertWin32PerformanceCounterToTimeKHR: if (builtin.os.tag == .windows)
+        ?*const fn (c.XrInstance, *const c.LARGE_INTEGER, *c.XrTime) callconv(.c) c.XrResult
+    else
+        void = if (builtin.os.tag == .windows) null else {},
     xrCreateDebugUtilsMessengerEXT: ?*const fn (c.XrInstance, *const c.XrDebugUtilsMessengerCreateInfoEXT, *c.XrDebugUtilsMessengerEXT) callconv(.c) c.XrResult = null,
     debug_messenger_handle: c.XrDebugUtilsMessengerEXT = null,
     depth_enabled: bool = false,
@@ -135,10 +155,10 @@ pub const State = struct {
     views: std.ArrayList(c.XrView) = undefined,
 
     swapchain: c.XrSwapchain = null,
-    swapchain_images: std.ArrayList(c.XrSwapchainImageOpenGLKHR) = undefined,
+    swapchain_images: std.ArrayList(XrSwapchainImage) = undefined,
     current_swapchain_index: u32 = 0, // Track current image for blitting
     depth_swapchain: c.XrSwapchain = null,
-    depth_swapchain_images: std.ArrayList(c.XrSwapchainImageOpenGLKHR) = undefined,
+    depth_swapchain_images: std.ArrayList(XrSwapchainImage) = undefined,
 
     fbo: c_uint = 0,
     mock_hmd_rt: c.RenderTexture = .{ .id = 0, .texture = undefined, .depth = undefined },
@@ -148,6 +168,9 @@ pub const State = struct {
 };
 
 var state: ?State = null;
+
+// Android context storage (set via setAndroidContext before setup())
+pub var android_context: if (builtin.abi == .android) ?AndroidConfig else void = if (builtin.abi == .android) null else {};
 
 //==============================================================================
 // Error Handling
@@ -162,6 +185,15 @@ pub const OpenXRError = error{
     NotInitialized,
     OutOfMemory,
 };
+
+/// Android-specific configuration for OpenXR initialization
+/// Only available when targeting Android
+pub const AndroidConfig = if (builtin.abi == .android) struct {
+    /// Pointer to JNI's JavaVM structure
+    vm: *anyopaque,
+    /// JNI reference to android.app.Activity
+    activity: *anyopaque,
+} else void;
 
 pub fn xrCheck(result: c.XrResult, comptime fmt: []const u8, args: anytype) bool {
     if (result >= 0) return true; // XR_SUCCEEDED
@@ -183,8 +215,33 @@ pub fn xrCheck(result: c.XrResult, comptime fmt: []const u8, args: anytype) bool
 // Public API - Setup/Shutdown
 //==============================================================================
 
+/// Set Android context before calling setup() (Android only)
+/// Must be called before setup() on Android for OpenXR to work properly
+pub fn setAndroidContext(config: AndroidConfig) void {
+    if (builtin.abi == .android) {
+        android_context = config;
+    }
+}
+
+/// Initialize EGL and OpenGL ES context (Android only)
+/// Must be called AFTER setAndroidContext() and BEFORE setup() on Android
+/// Returns true on success, false on failure
+pub fn initializeGraphicsContext() bool {
+    if (builtin.abi == .android) {
+        platform.initializeEGL() catch |err| {
+            std.debug.print("Failed to initialize EGL: {}\n", .{err});
+            return false;
+        };
+        std.debug.print("EGL and OpenGL ES 3 initialized successfully\n", .{});
+        return true;
+    }
+    // On other platforms, graphics context is managed by raylib's InitWindow()
+    return true;
+}
+
 /// Initialize OpenXR. Returns true on success, false on failure.
 /// This will gracefully fail if no VR runtime is available.
+/// On Android, call setAndroidContext() before this function.
 pub fn setup() bool {
     return setupWithAllocator(std.heap.c_allocator);
 }
@@ -202,8 +259,8 @@ pub fn setupWithAllocator(allocator: std.mem.Allocator) bool {
         .depth_infos = std.ArrayList(c.XrCompositionLayerDepthInfoKHR).initCapacity(allocator, 0) catch unreachable,
         .layers_pointers = std.ArrayList(*c.XrCompositionLayerBaseHeader).initCapacity(allocator, 0) catch unreachable,
         .views = std.ArrayList(c.XrView).initCapacity(allocator, 0) catch unreachable,
-        .swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).initCapacity(allocator, 0) catch unreachable,
-        .depth_swapchain_images = std.ArrayList(c.XrSwapchainImageOpenGLKHR).initCapacity(allocator, 0) catch unreachable,
+        .swapchain_images = std.ArrayList(XrSwapchainImage).initCapacity(allocator, 0) catch unreachable,
+        .depth_swapchain_images = std.ArrayList(XrSwapchainImage).initCapacity(allocator, 0) catch unreachable,
     };
 
     const setup_impl = @import("setup.zig");
