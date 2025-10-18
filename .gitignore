@@ -47,6 +47,10 @@ build/
 captures/
 .externalNativeBuild/
 .cxx/
+android/debug.keystore
+android/zig-cache/
+android/resources/
+android/.build/
 
 # Dependencies (if vendored locally)
 vendor/
