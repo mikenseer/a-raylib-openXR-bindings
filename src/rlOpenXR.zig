@@ -118,6 +118,8 @@ const Extensions = struct {
     xrCreateDebugUtilsMessengerEXT: ?*const fn (c.XrInstance, *const c.XrDebugUtilsMessengerCreateInfoEXT, *c.XrDebugUtilsMessengerEXT) callconv(.c) c.XrResult = null,
     debug_messenger_handle: c.XrDebugUtilsMessengerEXT = null,
     depth_enabled: bool = false,
+    refresh_rate_enabled: bool = false,
+    refresh_rate_requested: bool = false, // Track if we've already requested refresh rate
 };
 
 pub const State = struct {
