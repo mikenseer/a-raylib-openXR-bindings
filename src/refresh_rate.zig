@@ -16,7 +16,7 @@ var xrEnumerateDisplayRefreshRatesFB: ?*const fn (
     c.XrSession,
     u32,
     *u32,
-    [*]f32,
+    ?[*]f32,
 ) callconv(.c) c.XrResult = null;
 
 var xrGetDisplayRefreshRateFB: ?*const fn (
@@ -59,7 +59,6 @@ pub fn loadRefreshRateExtension(instance: c.XrInstance) bool {
     xrGetDisplayRefreshRateFB = @ptrCast(get_func);
     xrRequestDisplayRefreshRateFB = @ptrCast(set_func);
 
-    std.debug.print("Display refresh rate extension loaded successfully\n", .{});
     return true;
 }
 
@@ -70,8 +69,12 @@ pub fn getSupportedRefreshRates(
     const enum_fn = xrEnumerateDisplayRefreshRatesFB orelse return error.ExtensionNotSupported;
 
     var count: u32 = 0;
-    var result = enum_fn(session, 0, &count, undefined);
+    var result = enum_fn(session, 0, &count, null);
     if (!main.xrCheck(result, "Failed to get refresh rate count", .{})) {
+        return error.QueryFailed;
+    }
+
+    if (count == 0) {
         return error.QueryFailed;
     }
 
@@ -82,12 +85,6 @@ pub fn getSupportedRefreshRates(
     if (!main.xrCheck(result, "Failed to enumerate refresh rates", .{})) {
         return error.QueryFailed;
     }
-
-    std.debug.print("Supported refresh rates: ", .{});
-    for (rates) |rate| {
-        std.debug.print("{d}Hz ", .{rate});
-    }
-    std.debug.print("\n", .{});
 
     return rates;
 }
@@ -111,8 +108,6 @@ pub fn setRefreshRate(session: c.XrSession, target_rate: f32) !void {
     if (!main.xrCheck(result, "Failed to set refresh rate to {d}Hz", .{target_rate})) {
         return error.SetFailed;
     }
-
-    std.debug.print("Requested refresh rate: {d}Hz\n", .{target_rate});
 }
 
 /// Helper function to select the best refresh rate from supported rates
