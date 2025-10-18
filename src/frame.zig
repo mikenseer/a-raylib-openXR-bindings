@@ -100,6 +100,21 @@ pub fn beginOpenXR(state: *main.State) bool {
         return false;
     }
 
+    // Request highest available refresh rate on Android (Quest 3: 72/90/120Hz)
+    // Only do this once during first frame when session is ready
+    if (builtin.abi == .android and state.extensions.refresh_rate_enabled and !state.extensions.refresh_rate_requested) {
+        state.extensions.refresh_rate_requested = true;
+
+        const refresh = @import("refresh_rate.zig");
+        if (refresh.getSupportedRefreshRates(state.data.session, state.allocator)) |rates| {
+            defer state.allocator.free(rates);
+            const target_rate = refresh.selectBestRefreshRate(rates);
+            if (target_rate > 0) {
+                refresh.setRefreshRate(state.data.session, target_rate) catch {};
+            }
+        } else |_| {}
+    }
+
     // Locate views
     const view_locate_info = c.XrViewLocateInfo{
         .type = c.XR_TYPE_VIEW_LOCATE_INFO,
