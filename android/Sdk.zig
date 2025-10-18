@@ -475,6 +475,22 @@ pub fn createApp(
             \\<?xml version="1.0" encoding="utf-8" standalone="no"?><manifest xmlns:tools="http://schemas.android.com/tools" xmlns:android="http://schemas.android.com/apk/res/android" package="{s}">
             \\
         , .{app_config.package_name}) catch unreachable;
+
+        // Add uses-sdk with minSdkVersion and targetSdkVersion (required for Quest compatibility)
+        const sdk_version_int = @intFromEnum(app_config.target_version);
+        writer.print(
+            \\    <uses-sdk android:minSdkVersion="{d}" android:targetSdkVersion="{d}"/>
+            \\
+        , .{sdk_version_int, sdk_version_int}) catch unreachable;
+
+        // Add VR-specific features (required for Quest 3 to exit compatibility mode)
+        // Note: vr.headtracking is optional to allow launch without controllers
+        writer.writeAll(
+            \\    <uses-feature android:name="android.hardware.vr.headtracking" android:required="false"/>
+            \\    <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
+            \\
+        ) catch unreachable;
+
         for (app_config.permissions) |perm| {
             writer.print(
                 \\    <uses-permission android:name="{s}"/>
@@ -498,13 +514,21 @@ pub fn createApp(
             \\                <category android:name="com.oculus.intent.category.VR"/>
             \\            </intent-filter>
             \\        </activity>
-            \\    </application>
-            \\</manifest>
             \\
         , .{
             .hasCode = java_files_opt != null,
             .theme = theme,
         }) catch unreachable;
+
+        // Add Quest-specific meta-data (CRITICAL for exiting compatibility mode and accessing 120Hz)
+        writer.writeAll(
+            \\        <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|quest3|quest3s"/>
+            \\        <meta-data android:name="com.oculus.intent.category.VR" android:value="vr_only"/>
+            \\        <meta-data android:name="com.oculus.vr.focusaware" android:value="true"/>
+            \\    </application>
+            \\</manifest>
+            \\
+        ) catch unreachable;
 
         break :blk buf.toOwnedSlice(sdk.b.allocator) catch unreachable;
     });
