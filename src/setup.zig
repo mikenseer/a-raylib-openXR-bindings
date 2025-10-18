@@ -5,8 +5,57 @@ const std = @import("std");
 const main = @import("rlOpenXR.zig");
 const c = main.c; // Use main's C imports to avoid type mismatches
 
+// Android logging support
+const builtin = @import("builtin");
+const android_log = if (builtin.abi == .android) struct {
+    extern "log" fn __android_log_write(prio: c_int, tag: [*:0]const u8, text: [*:0]const u8) c_int;
+    const ANDROID_LOG_INFO = 4;
+
+    fn log(comptime fmt: []const u8, args: anytype) void {
+        var buf: [512]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&buf, fmt, args) catch "Log formatting failed";
+        _ = __android_log_write(ANDROID_LOG_INFO, "rlOpenXR-setup", msg.ptr);
+    }
+} else struct {
+    fn log(comptime fmt: []const u8, args: anytype) void {
+        std.debug.print(fmt ++ "\n", args);
+    }
+};
+
+fn logInfo(comptime fmt: []const u8, args: anytype) void {
+    android_log.log(fmt, args);
+    std.debug.print(fmt ++ "\n", args); // Also print to stderr for desktop
+}
+
 pub fn setupOpenXR(state: *main.State) !void {
     var result: c.XrResult = c.XR_SUCCESS;
+
+    // Android/Quest requires xrInitializeLoaderKHR to be called BEFORE xrEnumerateInstanceExtensionProperties
+    if (builtin.abi == .android) {
+        const android_ctx = @import("rlOpenXR.zig").android_context;
+        if (android_ctx) |ctx| {
+            var init_loader_fn: c.PFN_xrVoidFunction = null;
+            result = c.xrGetInstanceProcAddr(null, "xrInitializeLoaderKHR", &init_loader_fn);
+            if (main.xrCheck(result, "Got xrInitializeLoaderKHR function pointer", .{})) {
+                const xrInitializeLoaderKHR: *const fn (*const c.XrLoaderInitInfoAndroidKHR) callconv(.c) c.XrResult = @ptrCast(init_loader_fn);
+                const loader_init_info = c.XrLoaderInitInfoAndroidKHR{
+                    .type = c.XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR,
+                    .next = null,
+                    .applicationVM = ctx.vm,
+                    .applicationContext = ctx.activity,
+                };
+                result = xrInitializeLoaderKHR(&loader_init_info);
+                if (!main.xrCheck(result, "xrInitializeLoaderKHR", .{})) {
+                    return error.InitializationFailed;
+                }
+            } else {
+                return error.InitializationFailed;
+            }
+        } else {
+            std.debug.print("ERROR: Android context is null! Call setAndroidContext() before setup().\n", .{});
+            return error.InitializationFailed;
+        }
+    }
 
     // Enumerate instance extensions
     var ext_count: u32 = 0;
@@ -14,7 +63,6 @@ pub fn setupOpenXR(state: *main.State) !void {
     if (!main.xrCheck(result, "Failed to enumerate extension count", .{})) {
         return error.InitializationFailed;
     }
-
     const ext_props = try state.allocator.alloc(c.XrExtensionProperties, ext_count);
     defer state.allocator.free(ext_props);
 
@@ -33,14 +81,19 @@ pub fn setupOpenXR(state: *main.State) !void {
     defer enabled_exts.deinit(state.allocator);
 
     // Required extensions (platform-specific OpenGL)
-    const opengl_ext = if (@import("builtin").os.tag == .windows)
-        c.XR_KHR_OPENGL_ENABLE_EXTENSION_NAME
-    else if (@import("builtin").os.tag == .android)
+    const opengl_ext = if (builtin.abi == .android)
         c.XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME
+    else if (builtin.os.tag == .windows)
+        c.XR_KHR_OPENGL_ENABLE_EXTENSION_NAME
     else
         c.XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
 
     try enabled_exts.append(state.allocator, opengl_ext);
+
+    // Android requires android_create_instance extension
+    if (builtin.abi == .android) {
+        try enabled_exts.append(state.allocator, c.XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+    }
 
     // Optional but useful extensions
     // NOTE: Debug utils commented out - can cause instance creation failures with some runtimes
@@ -61,18 +114,10 @@ pub fn setupOpenXR(state: *main.State) !void {
             try enabled_exts.append(state.allocator, c.XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
         }
 
-        // Windows performance counter time conversion - temporarily disabled for debugging
-        // if (@import("builtin").os.tag == .windows) {
-        //     if (std.mem.eql(u8, ext_name, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME)) {
-        //         try enabled_exts.append(state.allocator, c.XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME);
-        //     }
-        // }
-
-        // Quest-specific refresh rate extension (only enable on Meta/Oculus runtimes)
-        // Note: SteamVR reports this extension but may reject it at instance creation
-        // if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
-        //     try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
-        // }
+        // Quest/Meta refresh rate extension (72-120Hz support on Quest 3)
+        if (std.mem.eql(u8, ext_name, "XR_FB_display_refresh_rate")) {
+            try enabled_exts.append(state.allocator, "XR_FB_display_refresh_rate");
+        }
     }
 
     if (!opengl_supported) {
@@ -100,9 +145,29 @@ pub fn setupOpenXR(state: *main.State) !void {
     // Use XR_API_VERSION_1_0 instead of XR_CURRENT_API_VERSION for better compatibility
     app_info.apiVersion = c.XR_MAKE_VERSION(1, 0, 0);
 
+    // Android-specific instance creation info (must be chained)
+    var android_create_info: c.XrInstanceCreateInfoAndroidKHR = undefined;
+    const instance_next: ?*anyopaque = if (builtin.abi == .android) blk: {
+        // Get Android context from rlOpenXR main module
+        const android_ctx = @import("rlOpenXR.zig").android_context;
+        if (android_ctx) |ctx| {
+            android_create_info = c.XrInstanceCreateInfoAndroidKHR{
+                .type = c.XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR,
+                .next = null,
+                .applicationVM = ctx.vm,
+                .applicationActivity = ctx.activity,
+            };
+            std.debug.print("Using Android context: VM={*}, Activity={*}\n", .{ ctx.vm, ctx.activity });
+            break :blk @ptrCast(&android_create_info);
+        } else {
+            std.debug.print("⚠ Warning: Android context not set! Call setAndroidContext() before setup().\n", .{});
+            break :blk null;
+        }
+    } else null;
+
     const instance_create_info = c.XrInstanceCreateInfo{
         .type = c.XR_TYPE_INSTANCE_CREATE_INFO,
-        .next = null,
+        .next = instance_next,
         .createFlags = 0,
         .applicationInfo = app_info,
         .enabledApiLayerCount = 0,
@@ -115,14 +180,16 @@ pub fn setupOpenXR(state: *main.State) !void {
     std.debug.print("  App: {s} v{d}\n", .{ std.mem.sliceTo(&app_info.applicationName, 0), app_info.applicationVersion });
     std.debug.print("  Engine: {s} v{d}\n", .{ std.mem.sliceTo(&app_info.engineName, 0), app_info.engineVersion });
     std.debug.print("  API Version: 0x{x}\n", .{app_info.apiVersion});
-    std.debug.print("  Extensions: {d}\n\n", .{instance_create_info.enabledExtensionCount});
+    std.debug.print("  Extensions: {d}\n", .{instance_create_info.enabledExtensionCount});
+    if (builtin.abi == .android) {
+        std.debug.print("  Platform: Android (Quest)\n", .{});
+    }
+    std.debug.print("\n", .{});
 
     result = c.xrCreateInstance(&instance_create_info, &state.data.instance);
     if (!main.xrCheck(result, "Failed to create XR instance", .{})) {
         return error.InitializationFailed;
     }
-
-    std.debug.print("Created OpenXR instance successfully\n", .{});
 
     // Load extension functions
     try loadExtensionFunctions(state);
@@ -141,8 +208,6 @@ pub fn setupOpenXR(state: *main.State) !void {
     if (!main.xrCheck(result, "Failed to get system for HMD", .{})) {
         return error.InitializationFailed;
     }
-
-    std.debug.print("Successfully got XrSystem with id {d} for HMD\n", .{state.data.system_id});
 
     // Get system properties
     var system_props = std.mem.zeroes(c.XrSystemProperties);
@@ -208,11 +273,16 @@ pub fn setupOpenXR(state: *main.State) !void {
 fn loadExtensionFunctions(state: *main.State) !void {
     var result: c.XrResult = undefined;
 
-    // Get OpenGL graphics requirements function
+    // Get OpenGL graphics requirements function (platform-specific name)
+    const gl_reqs_func_name = if (builtin.abi == .android)
+        "xrGetOpenGLESGraphicsRequirementsKHR"
+    else
+        "xrGetOpenGLGraphicsRequirementsKHR";
+
     var get_gl_reqs: c.PFN_xrVoidFunction = null;
     result = c.xrGetInstanceProcAddr(
         state.data.instance,
-        "xrGetOpenGLGraphicsRequirementsKHR",
+        gl_reqs_func_name,
         &get_gl_reqs,
     );
     if (!main.xrCheck(result, "Failed to get GL requirements function", .{})) {
@@ -246,8 +316,11 @@ fn loadExtensionFunctions(state: *main.State) !void {
 }
 
 fn checkGraphicsRequirements(state: *main.State) !void {
-    var opengl_reqs = std.mem.zeroes(c.XrGraphicsRequirementsOpenGLKHR);
-    opengl_reqs.type = c.XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR;
+    var opengl_reqs = std.mem.zeroes(main.XrGraphicsRequirements);
+    opengl_reqs.type = if (@import("builtin").abi == .android)
+        c.XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR
+    else
+        c.XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR;
 
     if (state.extensions.xrGetOpenGLGraphicsRequirementsKHR) |get_reqs| {
         const result = get_reqs(state.data.instance, state.data.system_id, &opengl_reqs);
@@ -263,8 +336,9 @@ fn checkGraphicsRequirements(state: *main.State) !void {
 }
 
 fn createSession(state: *main.State) !void {
-    const builtin = @import("builtin");
-    state.graphics_binding = switch (builtin.os.tag) {
+    state.graphics_binding = if (builtin.abi == .android)
+        @import("platform/android.zig").getCurrentGraphicsBinding()
+    else switch (builtin.os.tag) {
         .windows => @import("platform/windows.zig").getCurrentGraphicsBinding(),
         .linux => @import("platform/linux.zig").getCurrentGraphicsBinding(),
         else => @compileError("Unsupported platform for OpenXR"),
@@ -282,7 +356,17 @@ fn createSession(state: *main.State) !void {
         return error.SessionCreationFailed;
     }
 
-    std.debug.print("Created OpenXR session successfully\n", .{});
+    // Load and configure refresh rate extension for 120Hz (Quest 3 support)
+    if (builtin.abi == .android) {
+        const refresh = @import("refresh_rate.zig");
+        if (refresh.loadRefreshRateExtension(state.data.instance)) {
+            if (refresh.getSupportedRefreshRates(state.data.session, state.allocator)) |rates| {
+                defer state.allocator.free(rates);
+                // Try to set 120Hz (will fall back to highest supported if not available)
+                refresh.setRefreshRate(state.data.session, 120.0) catch {};
+            } else |_| {}
+        }
+    }
 }
 
 fn createReferenceSpaces(state: *main.State) !void {
@@ -404,9 +488,14 @@ fn createSwapchains(state: *main.State) !void {
         return error.SwapchainCreationFailed;
     }
 
+    const swapchain_image_type = if (builtin.abi == .android)
+        c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR
+    else
+        c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR;
+
     try state.swapchain_images.resize(state.allocator, image_count);
     for (state.swapchain_images.items) |*img| {
-        img.* = .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR, .next = null, .image = 0 };
+        img.* = .{ .type = swapchain_image_type, .next = null, .image = 0 };
     }
 
     result = c.xrEnumerateSwapchainImages(
@@ -462,7 +551,7 @@ fn createSwapchains(state: *main.State) !void {
                 if (main.xrCheck(result, "Got depth swapchain image count", .{})) {
                     try state.depth_swapchain_images.resize(state.allocator, depth_image_count);
                     for (state.depth_swapchain_images.items) |*img| {
-                        img.* = .{ .type = c.XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR, .next = null, .image = 0 };
+                        img.* = .{ .type = swapchain_image_type, .next = null, .image = 0 };
                     }
 
                     result = c.xrEnumerateSwapchainImages(
