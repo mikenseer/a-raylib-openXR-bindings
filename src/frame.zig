@@ -100,6 +100,26 @@ pub fn beginOpenXR(state: *main.State) bool {
         return false;
     }
 
+    // Check if we have a valid frame time from xrWaitFrame
+    if (state.frame_state.predictedDisplayTime == 0) {
+        return false;
+    }
+
+    // Begin frame FIRST - required before locating views/spaces
+    const frame_begin_info = c.XrFrameBeginInfo{ .type = c.XR_TYPE_FRAME_BEGIN_INFO, .next = null };
+    var result = c.xrBeginFrame(state.data.session, &frame_begin_info);
+    if (!main.xrCheck(result, "Failed to begin frame", .{})) {
+        return false;
+    }
+
+    // Mark that we've begun this frame (now it's safe to locate views/spaces)
+    state.frame_begun = true;
+
+    if (!state.run_framecycle) {
+        // Even if not rendering, we must call xrEndFrame
+        return false;
+    }
+
     // Request highest available refresh rate on Android (Quest 3: 72/90/120Hz)
     // Only do this once during first frame when session is ready
     if (builtin.abi == .android and state.extensions.refresh_rate_enabled and !state.extensions.refresh_rate_requested) {
@@ -115,7 +135,7 @@ pub fn beginOpenXR(state: *main.State) bool {
         } else |_| {}
     }
 
-    // Locate views
+    // Locate views (can only be done AFTER xrBeginFrame)
     const view_locate_info = c.XrViewLocateInfo{
         .type = c.XR_TYPE_VIEW_LOCATE_INFO,
         .next = null,
@@ -127,7 +147,7 @@ pub fn beginOpenXR(state: *main.State) bool {
     var view_state: c.XrViewState = .{ .type = c.XR_TYPE_VIEW_STATE, .next = null };
     var output_view_count: u32 = 0;
 
-    var result = c.xrLocateViews(
+    result = c.xrLocateViews(
         state.data.session,
         &view_locate_info,
         &view_state,
@@ -145,7 +165,7 @@ pub fn beginOpenXR(state: *main.State) bool {
         proj.fov = state.views.items[i].fov;
     }
 
-    // Get view location for camera
+    // Get view location for camera (can only be done AFTER xrBeginFrame)
     var view_location: c.XrSpaceLocation = .{ .type = c.XR_TYPE_SPACE_LOCATION, .next = null };
     result = c.xrLocateSpace(
         state.data.view_space,
@@ -154,17 +174,6 @@ pub fn beginOpenXR(state: *main.State) bool {
         &view_location,
     );
     if (!main.xrCheck(result, "Could not locate view space", .{})) {
-        return false;
-    }
-
-    // Begin frame
-    const frame_begin_info = c.XrFrameBeginInfo{ .type = c.XR_TYPE_FRAME_BEGIN_INFO, .next = null };
-    result = c.xrBeginFrame(state.data.session, &frame_begin_info);
-    if (!main.xrCheck(result, "Failed to begin frame", .{})) {
-        return false;
-    }
-
-    if (!state.run_framecycle) {
         return false;
     }
 
@@ -268,7 +277,8 @@ pub fn beginOpenXR(state: *main.State) bool {
 }
 
 pub fn endOpenXR(state: *main.State) void {
-    if (!state.session_running) {
+    // Only call xrEndFrame if we successfully called xrBeginFrame
+    if (!state.frame_begun) {
         return;
     }
 
@@ -306,9 +316,17 @@ pub fn endOpenXR(state: *main.State) void {
 
     const result = c.xrEndFrame(state.data.session, &frame_end_info);
     _ = main.xrCheck(result, "Failed to end frame", .{});
+
+    // Mark that we've ended this frame
+    state.frame_begun = false;
 }
 
 pub fn updateCameraOpenXR(state: *main.State, camera: *c.Camera3D) void {
+    // Can only locate views/spaces after xrWaitFrame has given us a valid time
+    if (state.frame_state.predictedDisplayTime == 0) {
+        return;
+    }
+
     const time = getTimeOpenXR(state);
 
     var view_location: c.XrSpaceLocation = .{ .type = c.XR_TYPE_SPACE_LOCATION, .next = null };

@@ -147,8 +147,8 @@ pub fn setupOpenXR(state: *main.State) !void {
     app_info.apiVersion = c.XR_MAKE_VERSION(1, 0, 0);
 
     // Android-specific instance creation info (must be chained)
-    var android_create_info: c.XrInstanceCreateInfoAndroidKHR = undefined;
     const instance_next: ?*anyopaque = if (builtin.abi == .android) blk: {
+        var android_create_info: c.XrInstanceCreateInfoAndroidKHR = undefined;
         // Get Android context from rlOpenXR main module
         const android_ctx = @import("rlOpenXR.zig").android_context;
         if (android_ctx) |ctx| {

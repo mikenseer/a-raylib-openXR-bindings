@@ -147,6 +147,7 @@ pub const State = struct {
 
     session_running: bool = false,
     run_framecycle: bool = false,
+    frame_begun: bool = false, // Track if xrBeginFrame was called this frame
 
     viewconfig_views: std.ArrayList(c.XrViewConfigurationView) = undefined,
     projection_views: std.ArrayList(c.XrCompositionLayerProjectionView) = undefined,
