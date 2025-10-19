@@ -131,21 +131,54 @@ pub fn main() !void {
 
 ## Refresh Rate Configuration
 
-For Quest 3 and other devices with variable refresh rates:
+**Android/Quest automatically defaults to the highest available refresh rate (120Hz on Quest 3).**
+
+The library handles this automatically on the first frame. No code changes needed for 120Hz!
+
+### Customizing Refresh Rate
+
+To implement a settings menu or override the default:
 
 ```zig
-// Load the refresh rate extension (Meta Quest specific)
-if (rl.loadRefreshRateExtension()) {
-    // Get supported refresh rates
-    const rates = try rl.getSupportedRefreshRates(allocator);
-    defer allocator.free(rates);
+const rl = @import("rlOpenXR");
+const std = @import("std");
 
-    // Set to 120Hz for Quest 3
-    try rl.setRefreshRate(120.0);
+// Modify src/frame.zig beginOpenXR() to customize refresh rate behavior:
+
+// Example 1: Always use 90Hz (battery saving mode)
+if (builtin.abi == .android and state.extensions.refresh_rate_enabled and !state.extensions.refresh_rate_requested) {
+    state.extensions.refresh_rate_requested = true;
+    const refresh = @import("refresh_rate.zig");
+    refresh.setRefreshRate(state.data.session, 90.0) catch {};
 }
+
+// Example 2: Build a settings menu
+if (builtin.abi == .android and state.extensions.refresh_rate_enabled and !state.extensions.refresh_rate_requested) {
+    state.extensions.refresh_rate_requested = true;
+    const refresh = @import("refresh_rate.zig");
+
+    // Query available rates
+    if (refresh.getSupportedRefreshRates(state.data.session, state.allocator)) |rates| {
+        defer state.allocator.free(rates);
+
+        // Show rates in UI: rates[0], rates[1], etc.
+        // Let user pick, then:
+        const user_choice: f32 = 90.0; // From settings
+        refresh.setRefreshRate(state.data.session, user_choice) catch {};
+    } else |_| {}
+}
+
+// Example 3: Get current refresh rate
+const current_rate = refresh.getCurrentRefreshRate(state.data.session) catch 72.0;
+std.debug.print("Running at {d}Hz\n", .{current_rate});
 ```
 
-Supported range: **72-300Hz** (device-dependent)
+**Supported rates** (device-dependent):
+- Quest 3: 72Hz, 90Hz, 120Hz
+- Quest 2: 72Hz, 90Hz
+- Quest Pro: 72Hz, 90Hz
+- Valve Index: 80Hz, 90Hz, 120Hz, 144Hz
+- Future devices: Up to 300Hz
 
 ## Platform Detection
 
