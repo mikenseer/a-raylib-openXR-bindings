@@ -2,8 +2,23 @@
 // Ported from rlOpenXR.cpp (FireFlyForLife)
 
 const std = @import("std");
+const builtin = @import("builtin");
 const main = @import("rlOpenXR.zig");
 const c = main.c; // Use main's C imports to avoid type mismatches
+
+// Android logging helper
+fn androidLog(comptime fmt: []const u8, args: anytype) void {
+    if (builtin.abi == .android) {
+        const ANDROID_LOG_INFO = 4;
+        const __android_log_write = @extern(*const fn (c_int, [*:0]const u8, [*:0]const u8) callconv(.c) c_int, .{ .name = "__android_log_write", .linkage = .strong });
+
+        var buf: [512]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&buf, fmt, args) catch "Log formatting failed";
+        _ = __android_log_write(ANDROID_LOG_INFO, "rlOpenXR", msg.ptr);
+    } else {
+        std.debug.print(fmt ++ "\n", args);
+    }
+}
 
 pub fn updateHandsOpenXR(state: *main.State, left: ?*main.HandData, right: ?*main.HandData) void {
     const time = @import("frame.zig").getTimeOpenXR(state);
@@ -120,6 +135,35 @@ pub fn getActionFloatOpenXR(state: *main.State, action: c.XrAction, subaction_pa
 
     if (action_state.isActive == 0) {
         return 0.0;
+    }
+
+    return action_state.currentState;
+}
+
+pub fn getActionVector2OpenXR(state: *main.State, action: c.XrAction, subaction_path: c.XrPath) c.XrVector2f {
+    const get_info = c.XrActionStateGetInfo{
+        .type = c.XR_TYPE_ACTION_STATE_GET_INFO,
+        .next = null,
+        .action = action,
+        .subactionPath = subaction_path,
+    };
+
+    var action_state: c.XrActionStateVector2f = .{
+        .type = c.XR_TYPE_ACTION_STATE_VECTOR2F,
+        .next = null,
+        .currentState = .{ .x = 0.0, .y = 0.0 },
+        .changedSinceLastSync = 0,
+        .lastChangeTime = 0,
+        .isActive = 0,
+    };
+
+    const result = c.xrGetActionStateVector2f(state.data.session, &get_info, &action_state);
+    if (!main.xrCheck(result, "Failed to get action vector2 state", .{})) {
+        return .{ .x = 0.0, .y = 0.0 };
+    }
+
+    if (action_state.isActive == 0) {
+        return .{ .x = 0.0, .y = 0.0 };
     }
 
     return action_state.currentState;

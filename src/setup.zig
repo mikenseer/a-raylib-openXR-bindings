@@ -399,36 +399,11 @@ fn createReferenceSpaces(state: *main.State) !void {
 }
 
 /// Update the play space offset for locomotion (smooth turning, teleportation, etc.)
-/// This recreates the play_space reference with a new pose offset
+/// This stores the offset which will be manually applied to the camera during rendering
+/// Note: We do NOT recreate the OpenXR reference space as that doesn't work on Quest
 pub fn updatePlaySpaceOffset(state: *main.State, new_offset: c.XrPosef) !void {
-    // Destroy old play_space
-    const destroy_result = c.xrDestroySpace(state.data.play_space);
-    if (!main.xrCheck(destroy_result, "Failed to destroy old play space", .{})) {
-        return error.SpaceUpdateFailed;
-    }
-
-    // Create new play_space with updated offset
-    const play_space_create_info = c.XrReferenceSpaceCreateInfo{
-        .type = c.XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
-        .next = null,
-        .referenceSpaceType = state.data.play_space_type,
-        .poseInReferenceSpace = new_offset,
-    };
-
-    const create_result = c.xrCreateReferenceSpace(
-        state.data.session,
-        &play_space_create_info,
-        &state.data.play_space
-    );
-    if (!main.xrCheck(create_result, "Failed to create play space with new offset", .{})) {
-        return error.SpaceUpdateFailed;
-    }
-
-    // Store the offset for future updates
+    // Simply store the offset - it will be applied manually to the camera
     state.play_space_offset = new_offset;
-
-    // Update the layer projection space reference
-    state.layer_projection.space = state.data.play_space;
 }
 
 fn createSwapchains(state: *main.State) !void {

@@ -509,4 +509,87 @@ fn setupAndroidBuild(
     // Run on Quest step
     const run_step = b.step("android-run", "Build, install, and run APK on connected Quest");
     run_step.dependOn(app.run());
+
+    //==========================================================================
+    // Android Build - hello_smooth_turning
+    //==========================================================================
+
+    // Configure the Android app for smooth turning
+    const smooth_turning_config = AndroidSdk.AppConfig{
+        .target_version = @enumFromInt(33), // Android 13 (API 33)
+        .display_name = "rlOpenXR Smooth Turning",
+        .app_name = "hello_smooth_turning",
+        .package_name = "com.rlopenxr.smoothturning",
+        .resources = &[_]AndroidSdk.Resource{},
+        .permissions = &[_][]const u8{
+            "android.permission.INTERNET",
+        },
+        .fullscreen = true,
+    };
+
+    // Create Android app for smooth turning
+    const smooth_turning_app = sdk.createApp(
+        "hello_smooth_turning.apk",
+        "examples/hello_smooth_turning_android.zig",
+        null, // No Java files
+        smooth_turning_config,
+        .Debug,
+        .{
+            .aarch64 = true, // Quest 3 is ARM64
+            .arm = false,
+            .x86 = false,
+            .x86_64 = false,
+        },
+        key_store,
+    );
+
+    // Add OpenXR loader to smooth turning APK
+    smooth_turning_app.copy_to_zip_step.run_step.addArg(b.pathFromRoot(openxr_loader_path));
+    smooth_turning_app.copy_to_zip_step.run_step.addArg("lib/arm64-v8a/libopenxr_loader.so");
+
+    // Configure each Android library for smooth turning
+    for (smooth_turning_app.libraries) |lib| {
+        lib.linkLibrary(android_raylib_artifact);
+
+        // Create Android-targeted rlOpenXR module
+        const android_rlOpenXR_mod_st = b.createModule(.{
+            .root_source_file = b.path("src/rlOpenXR.zig"),
+            .target = lib.root_module.resolved_target.?,
+            .optimize = lib.root_module.optimize.?,
+        });
+        android_rlOpenXR_mod_st.addImport("raylib", android_raylib_dep.module("raylib"));
+        lib.root_module.addImport("rlOpenXR", android_rlOpenXR_mod_st);
+
+        // Add OpenXR headers
+        const openxr_include = b.fmt("{s}/include", .{openxr_sdk_path.?});
+        lib.addIncludePath(.{ .cwd_relative = openxr_include });
+        android_rlOpenXR_mod_st.addIncludePath(.{ .cwd_relative = openxr_include });
+
+        // Add raylib headers
+        const raylib_dep = b.dependency("raylib", .{});
+        const raylib_src_path = raylib_dep.path("src").getPath(b);
+        lib.addIncludePath(.{ .cwd_relative = raylib_src_path });
+        android_rlOpenXR_mod_st.addIncludePath(.{ .cwd_relative = raylib_src_path });
+
+        // Link OpenXR loader
+        lib.addLibraryPath(.{ .cwd_relative = "android/libs/arm64-v8a" });
+        lib.linkSystemLibrary("openxr_loader");
+        lib.linker_allow_shlib_undefined = true;
+    }
+
+    // Install smooth turning APK
+    const install_smooth_turning_apk = b.addInstallFile(smooth_turning_app.apk_file, "apk/hello_smooth_turning.apk");
+    install_smooth_turning_apk.step.dependOn(smooth_turning_app.final_step);
+
+    // Build smooth turning APK step
+    const android_smooth_turning_step = b.step("android-smooth-turning", "Build smooth turning APK for Quest");
+    android_smooth_turning_step.dependOn(&install_smooth_turning_apk.step);
+
+    // Install smooth turning to Quest step
+    const install_smooth_turning_step = b.step("android-smooth-turning-install", "Build and install smooth turning APK to Quest");
+    install_smooth_turning_step.dependOn(smooth_turning_app.install());
+
+    // Run smooth turning on Quest step
+    const run_smooth_turning_step = b.step("android-smooth-turning-run", "Build, install, and run smooth turning APK on Quest");
+    run_smooth_turning_step.dependOn(smooth_turning_app.run());
 }

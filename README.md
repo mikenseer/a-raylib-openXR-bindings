@@ -22,6 +22,7 @@ https://github.com/user-attachments/assets/fb1750bb-739d-49eb-b949-487037ddee57
 - **Hand Tracking**: Full OpenXR action system for controllers and hand input
 - **Platform Detection**: Runtime detection of PC vs Android, VR vs non-VR
 - **Clean API**: Zig-idiomatic wrapper around OpenXR with error unions
+- **Locomotion System**: Smooth turning and locomotion (PC VR ✅ | Quest ⚠️ - see `TESTING_STATUS.md`)
 
 ## Credits
 

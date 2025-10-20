@@ -601,6 +601,14 @@ pub fn getActionFloat(action: c.XrAction, subaction_path: c.XrPath) f32 {
     return 0.0;
 }
 
+pub fn getActionVector2(action: c.XrAction, subaction_path: c.XrPath) c.XrVector2f {
+    if (state) |*s| {
+        const input_impl = @import("input.zig");
+        return input_impl.getActionVector2OpenXR(s, action, subaction_path);
+    }
+    return .{ .x = 0.0, .y = 0.0 };
+}
+
 pub fn getActionBooleanClicked(action: c.XrAction, subaction_path: c.XrPath) bool {
     if (state) |*s| {
         const input_impl = @import("input.zig");
