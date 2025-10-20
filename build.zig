@@ -453,7 +453,6 @@ fn setupAndroidBuild(
 
     // Configure each Android library
     for (app.libraries) |lib| {
-
         // Link Android-built raylib (not Windows raylib)
         lib.linkLibrary(android_raylib_artifact);
 

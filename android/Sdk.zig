@@ -483,11 +483,11 @@ pub fn createApp(
             \\
         , .{sdk_version_int, sdk_version_int}) catch unreachable;
 
-        // Add VR-specific features (required for Quest 3 to exit compatibility mode)
-        // Note: vr.headtracking is optional to allow launch without controllers
+        // Add VR-specific features (required for Quest to exit compatibility mode)
+        // Match Meta's official OpenXR samples
         writer.writeAll(
-            \\    <uses-feature android:name="android.hardware.vr.headtracking" android:required="false"/>
-            \\    <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
+            \\    <uses-feature android:glEsVersion="0x00030001" android:required="true"/>
+            \\    <uses-feature android:name="android.hardware.vr.headtracking" android:required="true"/>
             \\
         ) catch unreachable;
 
@@ -506,12 +506,12 @@ pub fn createApp(
 
         writer.print(
             \\    <application android:debuggable="true" android:hasCode="{[hasCode]}" android:label="@string/app_name" {[theme]s} tools:replace="android:theme,android:allowBackup,label" >
-            \\        <activity android:configChanges="keyboardHidden|orientation" android:name="android.app.NativeActivity" android:exported="true">
+            \\        <activity android:name="android.app.NativeActivity" android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" android:launchMode="singleTask" android:screenOrientation="landscape" android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode" android:exported="true">
             \\            <meta-data android:name="android.app.lib_name" android:value="@string/lib_name"/>
             \\            <intent-filter>
             \\                <action android:name="android.intent.action.MAIN"/>
+            \\                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD"/>
             \\                <category android:name="android.intent.category.LAUNCHER"/>
-            \\                <category android:name="com.oculus.intent.category.VR"/>
             \\            </intent-filter>
             \\        </activity>
             \\

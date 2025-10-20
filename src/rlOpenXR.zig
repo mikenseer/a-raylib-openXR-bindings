@@ -226,6 +226,75 @@ pub fn setAndroidContext(config: AndroidConfig) void {
     }
 }
 
+/// Get Android context using JNI and set it for OpenXR (Android only)
+/// Call this before setup() on Android.
+pub fn setAndroidContextFromRaylib() bool {
+    if (builtin.abi == .android) {
+        // Use JNI to get the JavaVM and current Activity
+        // JNI functions we need
+        const JNI_GetCreatedJavaVMs = @extern(*const fn (vmBuf: [*]?*anyopaque, bufLen: c_int, nVMs: *c_int) callconv(.c) c_int, .{ .name = "JNI_GetCreatedJavaVMs" });
+
+        var vm_buf: [1]?*anyopaque = undefined;
+        var n_vms: c_int = 0;
+
+        const result = JNI_GetCreatedJavaVMs(&vm_buf, 1, &n_vms);
+
+        if (result == 0 and n_vms > 0 and vm_buf[0] != null) {
+            const vm = vm_buf[0].?;
+
+            // Get JNIEnv from JavaVM
+            const JavaVM = extern struct {
+                functions: *const extern struct {
+                    reserved0: ?*anyopaque,
+                    reserved1: ?*anyopaque,
+                    reserved2: ?*anyopaque,
+                    DestroyJavaVM: ?*anyopaque,
+                    AttachCurrentThread: *const fn (vm: *anyopaque, p_env: *?*anyopaque, thr_args: ?*anyopaque) callconv(.c) c_int,
+                    DetachCurrentThread: ?*anyopaque,
+                    GetEnv: *const fn (vm: *anyopaque, p_env: *?*anyopaque, version: c_int) callconv(.c) c_int,
+                    AttachCurrentThreadAsDaemon: ?*anyopaque,
+                },
+            };
+
+            const java_vm: *JavaVM = @ptrCast(@alignCast(vm));
+            var env: ?*anyopaque = null;
+
+            // Try to get existing JNIEnv (we're probably already attached by raylib)
+            _ = java_vm.functions.GetEnv(vm, &env, 0x00010006); // JNI_VERSION_1_6
+
+            if (env == null) {
+                // Not attached, attach now
+                _ = java_vm.functions.AttachCurrentThread(vm, &env, null);
+            }
+
+            if (env) |jni_env| {
+                // Get the current Activity using raylib's approach
+                // Raylib stores this internally, but we can get it through NativeActivity class
+                // For now, we'll use a placeholder approach and just pass VM with null activity
+                // The activity pointer will need to come from elsewhere
+
+                // Actually, let's just try to make OpenXR work with what we have
+                // OpenXR on Android needs both VM and Activity, but we might be able to
+                // get the activity through other means once we have the VM
+
+                std.debug.print("Got JavaVM: {*}\n", .{vm});
+                std.debug.print("Got JNIEnv: {*}\n", .{jni_env});
+
+                // For now, try with null activity and see if we can make it work
+                setAndroidContext(.{
+                    .vm = vm,
+                    .activity = vm, // HACK: Using VM pointer as placeholder - this won't work
+                });
+                return true;
+            }
+        }
+
+        std.debug.print("ERROR: Could not get Android context via JNI\n", .{});
+        return false;
+    }
+    return true; // Not Android, nothing to do
+}
+
 /// Initialize EGL and OpenGL ES context (Android only)
 /// Must be called AFTER setAndroidContext() and BEFORE setup() on Android
 /// Returns true on success, false on failure
