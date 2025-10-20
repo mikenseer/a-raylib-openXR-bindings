@@ -592,4 +592,253 @@ fn setupAndroidBuild(
     // Run smooth turning on Quest step
     const run_smooth_turning_step = b.step("android-smooth-turning-run", "Build, install, and run smooth turning APK on Quest");
     run_smooth_turning_step.dependOn(smooth_turning_app.run());
+
+    //==========================================================================
+    // Android Build - hello_hands
+    //==========================================================================
+
+    // Configure the Android app for hands
+    const hands_config = AndroidSdk.AppConfig{
+        .target_version = @enumFromInt(33), // Android 13 (API 33)
+        .display_name = "rlOpenXR Hands",
+        .app_name = "hello_hands",
+        .package_name = "com.rlopenxr.hands",
+        .resources = &[_]AndroidSdk.Resource{},
+        .permissions = &[_][]const u8{
+            "android.permission.INTERNET",
+        },
+        .fullscreen = true,
+    };
+
+    // Create Android app for hands
+    const hands_app = sdk.createApp(
+        "hello_hands.apk",
+        "examples/hello_hands_android.zig",
+        null, // No Java files
+        hands_config,
+        .Debug,
+        .{
+            .aarch64 = true, // Quest 3 is ARM64
+            .arm = false,
+            .x86 = false,
+            .x86_64 = false,
+        },
+        key_store,
+    );
+
+    // Add OpenXR loader to hands APK
+    hands_app.copy_to_zip_step.run_step.addArg(b.pathFromRoot(openxr_loader_path));
+    hands_app.copy_to_zip_step.run_step.addArg("lib/arm64-v8a/libopenxr_loader.so");
+
+    // Configure each Android library for hands
+    for (hands_app.libraries) |lib| {
+        lib.linkLibrary(android_raylib_artifact);
+
+        // Create Android-targeted rlOpenXR module
+        const android_rlOpenXR_mod_hands = b.createModule(.{
+            .root_source_file = b.path("src/rlOpenXR.zig"),
+            .target = lib.root_module.resolved_target.?,
+            .optimize = lib.root_module.optimize.?,
+        });
+        android_rlOpenXR_mod_hands.addImport("raylib", android_raylib_dep.module("raylib"));
+        lib.root_module.addImport("rlOpenXR", android_rlOpenXR_mod_hands);
+
+        // Add OpenXR headers
+        const openxr_include = b.fmt("{s}/include", .{openxr_sdk_path.?});
+        lib.addIncludePath(.{ .cwd_relative = openxr_include });
+        android_rlOpenXR_mod_hands.addIncludePath(.{ .cwd_relative = openxr_include });
+
+        // Add raylib headers
+        const raylib_dep = b.dependency("raylib", .{});
+        const raylib_src_path = raylib_dep.path("src").getPath(b);
+        lib.addIncludePath(.{ .cwd_relative = raylib_src_path });
+        android_rlOpenXR_mod_hands.addIncludePath(.{ .cwd_relative = raylib_src_path });
+
+        // Link OpenXR loader
+        lib.addLibraryPath(.{ .cwd_relative = "android/libs/arm64-v8a" });
+        lib.linkSystemLibrary("openxr_loader");
+        lib.linker_allow_shlib_undefined = true;
+    }
+
+    // Install hands APK
+    const install_hands_apk = b.addInstallFile(hands_app.apk_file, "apk/hello_hands.apk");
+    install_hands_apk.step.dependOn(hands_app.final_step);
+
+    // Build hands APK step
+    const android_hands_step = b.step("android-hands", "Build hands APK for Quest");
+    android_hands_step.dependOn(&install_hands_apk.step);
+
+    // Install hands to Quest step
+    const install_hands_step = b.step("android-hands-install", "Build and install hands APK to Quest");
+    install_hands_step.dependOn(hands_app.install());
+
+    // Run hands on Quest step
+    const run_hands_step = b.step("android-hands-run", "Build, install, and run hands APK on Quest");
+    run_hands_step.dependOn(hands_app.run());
+
+    //==========================================================================
+    // Android Build - hello_clicky_hands
+    //==========================================================================
+
+    // Configure the Android app for clicky hands
+    const clicky_hands_config = AndroidSdk.AppConfig{
+        .target_version = @enumFromInt(33), // Android 13 (API 33)
+        .display_name = "rlOpenXR Clicky Hands",
+        .app_name = "hello_clicky_hands",
+        .package_name = "com.rlopenxr.clickyhands",
+        .resources = &[_]AndroidSdk.Resource{},
+        .permissions = &[_][]const u8{
+            "android.permission.INTERNET",
+        },
+        .fullscreen = true,
+    };
+
+    // Create Android app for clicky hands
+    const clicky_hands_app = sdk.createApp(
+        "hello_clicky_hands.apk",
+        "examples/hello_clicky_hands_android.zig",
+        null, // No Java files
+        clicky_hands_config,
+        .Debug,
+        .{
+            .aarch64 = true, // Quest 3 is ARM64
+            .arm = false,
+            .x86 = false,
+            .x86_64 = false,
+        },
+        key_store,
+    );
+
+    // Add OpenXR loader to clicky hands APK
+    clicky_hands_app.copy_to_zip_step.run_step.addArg(b.pathFromRoot(openxr_loader_path));
+    clicky_hands_app.copy_to_zip_step.run_step.addArg("lib/arm64-v8a/libopenxr_loader.so");
+
+    // Configure each Android library for clicky hands
+    for (clicky_hands_app.libraries) |lib| {
+        lib.linkLibrary(android_raylib_artifact);
+
+        // Create Android-targeted rlOpenXR module
+        const android_rlOpenXR_mod_clicky = b.createModule(.{
+            .root_source_file = b.path("src/rlOpenXR.zig"),
+            .target = lib.root_module.resolved_target.?,
+            .optimize = lib.root_module.optimize.?,
+        });
+        android_rlOpenXR_mod_clicky.addImport("raylib", android_raylib_dep.module("raylib"));
+        lib.root_module.addImport("rlOpenXR", android_rlOpenXR_mod_clicky);
+
+        // Add OpenXR headers
+        const openxr_include = b.fmt("{s}/include", .{openxr_sdk_path.?});
+        lib.addIncludePath(.{ .cwd_relative = openxr_include });
+        android_rlOpenXR_mod_clicky.addIncludePath(.{ .cwd_relative = openxr_include });
+
+        // Add raylib headers
+        const raylib_dep = b.dependency("raylib", .{});
+        const raylib_src_path = raylib_dep.path("src").getPath(b);
+        lib.addIncludePath(.{ .cwd_relative = raylib_src_path });
+        android_rlOpenXR_mod_clicky.addIncludePath(.{ .cwd_relative = raylib_src_path });
+
+        // Link OpenXR loader
+        lib.addLibraryPath(.{ .cwd_relative = "android/libs/arm64-v8a" });
+        lib.linkSystemLibrary("openxr_loader");
+        lib.linker_allow_shlib_undefined = true;
+    }
+
+    // Install clicky hands APK
+    const install_clicky_hands_apk = b.addInstallFile(clicky_hands_app.apk_file, "apk/hello_clicky_hands.apk");
+    install_clicky_hands_apk.step.dependOn(clicky_hands_app.final_step);
+
+    // Build clicky hands APK step
+    const android_clicky_hands_step = b.step("android-clicky-hands", "Build clicky hands APK for Quest");
+    android_clicky_hands_step.dependOn(&install_clicky_hands_apk.step);
+
+    // Install clicky hands to Quest step
+    const install_clicky_hands_step = b.step("android-clicky-hands-install", "Build and install clicky hands APK to Quest");
+    install_clicky_hands_step.dependOn(clicky_hands_app.install());
+
+    // Run clicky hands on Quest step
+    const run_clicky_hands_step = b.step("android-clicky-hands-run", "Build, install, and run clicky hands APK on Quest");
+    run_clicky_hands_step.dependOn(clicky_hands_app.run());
+
+    //==========================================================================
+    // Android Build - hello_teleport
+    //==========================================================================
+
+    // Configure the Android app for teleport
+    const teleport_config = AndroidSdk.AppConfig{
+        .target_version = @enumFromInt(33), // Android 13 (API 33)
+        .display_name = "rlOpenXR Teleport",
+        .app_name = "hello_teleport",
+        .package_name = "com.rlopenxr.teleport",
+        .resources = &[_]AndroidSdk.Resource{},
+        .permissions = &[_][]const u8{
+            "android.permission.INTERNET",
+        },
+        .fullscreen = true,
+    };
+
+    // Create Android app for teleport
+    const teleport_app = sdk.createApp(
+        "hello_teleport.apk",
+        "examples/hello_teleport_android.zig",
+        null, // No Java files
+        teleport_config,
+        .Debug,
+        .{
+            .aarch64 = true, // Quest 3 is ARM64
+            .arm = false,
+            .x86 = false,
+            .x86_64 = false,
+        },
+        key_store,
+    );
+
+    // Add OpenXR loader to teleport APK
+    teleport_app.copy_to_zip_step.run_step.addArg(b.pathFromRoot(openxr_loader_path));
+    teleport_app.copy_to_zip_step.run_step.addArg("lib/arm64-v8a/libopenxr_loader.so");
+
+    // Configure each Android library for teleport
+    for (teleport_app.libraries) |lib| {
+        lib.linkLibrary(android_raylib_artifact);
+
+        // Create Android-targeted rlOpenXR module
+        const android_rlOpenXR_mod_teleport = b.createModule(.{
+            .root_source_file = b.path("src/rlOpenXR.zig"),
+            .target = lib.root_module.resolved_target.?,
+            .optimize = lib.root_module.optimize.?,
+        });
+        android_rlOpenXR_mod_teleport.addImport("raylib", android_raylib_dep.module("raylib"));
+        lib.root_module.addImport("rlOpenXR", android_rlOpenXR_mod_teleport);
+
+        // Add OpenXR headers
+        const openxr_include = b.fmt("{s}/include", .{openxr_sdk_path.?});
+        lib.addIncludePath(.{ .cwd_relative = openxr_include });
+        android_rlOpenXR_mod_teleport.addIncludePath(.{ .cwd_relative = openxr_include });
+
+        // Add raylib headers
+        const raylib_dep = b.dependency("raylib", .{});
+        const raylib_src_path = raylib_dep.path("src").getPath(b);
+        lib.addIncludePath(.{ .cwd_relative = raylib_src_path });
+        android_rlOpenXR_mod_teleport.addIncludePath(.{ .cwd_relative = raylib_src_path });
+
+        // Link OpenXR loader
+        lib.addLibraryPath(.{ .cwd_relative = "android/libs/arm64-v8a" });
+        lib.linkSystemLibrary("openxr_loader");
+        lib.linker_allow_shlib_undefined = true;
+    }
+
+    // Install teleport APK
+    const install_teleport_apk = b.addInstallFile(teleport_app.apk_file, "apk/hello_teleport.apk");
+    install_teleport_apk.step.dependOn(teleport_app.final_step);
+
+    // Build teleport APK step
+    const android_teleport_step = b.step("android-teleport", "Build teleport APK for Quest");
+    android_teleport_step.dependOn(&install_teleport_apk.step);
+
+    // Install teleport to Quest step
+    const install_teleport_step = b.step("android-teleport-install", "Build and install teleport APK to Quest");
+    install_teleport_step.dependOn(teleport_app.install());
+
+    // Run teleport on Quest step
+    const run_teleport_step = b.step("android-teleport-run", "Build, install, and run teleport APK on Quest");
+    run_teleport_step.dependOn(teleport_app.run());
 }
