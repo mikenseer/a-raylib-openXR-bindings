@@ -22,7 +22,8 @@ https://github.com/user-attachments/assets/fb1750bb-739d-49eb-b949-487037ddee57
 - **Hand Tracking**: Full OpenXR action system for controllers and hand input
 - **Platform Detection**: Runtime detection of PC vs Android, VR vs non-VR
 - **Clean API**: Zig-idiomatic wrapper around OpenXR with error unions
-- **Locomotion System**: Smooth turning and locomotion (PC VR ✅ | Quest ⚠️ - see `TESTING_STATUS.md`)
+- **Locomotion System**: Smooth turning and locomotion (PC VR ✅ | Quest ✅)
+- **Cross-Platform Examples**: All examples work on both PC VR and Android Quest
 
 ## Credits
 
@@ -54,7 +55,9 @@ The example will automatically detect if a VR runtime is available and fall back
 
 ## Examples
 
-The library includes five progressive examples demonstrating different features:
+The library includes five progressive examples demonstrating different features. **All examples work on both PC VR and Android Quest** using a shared codebase.
+
+### Desktop (PC VR)
 
 ```bash
 # Basic VR rendering with automatic fallback
@@ -73,7 +76,38 @@ zig build run-teleport
 zig build run-smooth-turning
 ```
 
+### Android (Quest)
+
+```bash
+# Basic VR example
+zig build android-run
+
+# Hand tracking
+zig build android-hands-run
+
+# Trigger input
+zig build android-clicky-hands-run
+
+# Teleportation
+zig build android-teleport-run
+
+# Smooth locomotion
+zig build android-smooth-turning-run
+```
+
 Each example builds on the previous one, teaching VR fundamentals step-by-step.
+
+### Cross-Platform Architecture
+
+Each example uses a **3-file pattern** for maximum code reuse:
+
+```
+hello_X.zig           - Desktop entry point (simple main loop)
+hello_X_android.zig   - Android entry point (ANR-free event loop)
+hello_X_shared.zig    - Shared VR logic (platform-independent)
+```
+
+The shared module contains all VR application logic, while entry points handle platform-specific initialization and event loops. This architecture allows ~95% code reuse between platforms.
 
 ## Usage Example
 
@@ -261,6 +295,8 @@ This allows fast iteration without putting on a headset.
 
 ## Architecture
 
+### Library Structure
+
 ```
 src/
   rlOpenXR.zig       - Main public API
@@ -272,14 +308,56 @@ src/
     windows.zig      - Windows-specific OpenGL context
     linux.zig        - Linux-specific OpenGL context
     android.zig      - Android EGL context
-
-examples/
-  hello_vr.zig             - Basic VR example with fallback
-  hello_hands.zig          - Hand tracking with controller visualization
-  hello_clicky_hands.zig   - Interactive cubes with trigger input
-  hello_teleport.zig       - Teleportation locomotion system
-  hello_smooth_turning.zig - Joystick based smooth turning and locomotion
 ```
+
+### Example Structure (Cross-Platform)
+
+Each example follows the **3-file pattern**:
+
+```
+examples/
+  # Basic VR
+  hello_vr.zig                  - Desktop entry point
+  hello_vr_android.zig          - Android entry point
+  hello_vr_shared.zig           - Shared VR logic
+
+  # Hand Tracking
+  hello_hands.zig               - Desktop entry point
+  hello_hands_android.zig       - Android entry point
+  hello_hands_shared.zig        - Shared VR logic
+
+  # Trigger Input
+  hello_clicky_hands.zig        - Desktop entry point
+  hello_clicky_hands_android.zig - Android entry point
+  hello_clicky_hands_shared.zig - Shared VR logic
+
+  # Teleportation
+  hello_teleport.zig            - Desktop entry point
+  hello_teleport_android.zig    - Android entry point
+  hello_teleport_shared.zig     - Shared VR logic
+
+  # Smooth Locomotion
+  hello_smooth_turning.zig      - Desktop entry point
+  hello_smooth_turning_android.zig - Android entry point
+  hello_smooth_turning_shared.zig - Shared VR logic
+```
+
+**Desktop entry points** (`hello_X.zig`):
+- Simple `main()` function with standard game loop
+- ~15 lines of code
+- Imports VRApp from shared module
+
+**Android entry points** (`hello_X_android.zig`):
+- ANR-free event loop using Meta's recommended pattern
+- Handles Android lifecycle callbacks
+- ~200 lines of platform-specific code
+- Imports VRApp from shared module
+
+**Shared modules** (`hello_X_shared.zig`):
+- Contains all VR application logic
+- Platform-independent (works on PC and Android)
+- VRApp struct with init/update/render/deinit methods
+- 95% of application code lives here
 
 ## API Reference
 
@@ -301,7 +379,10 @@ examples/
 - `updateHands(?*HandData, ?*HandData)` - Update left/right hand tracking
 - `syncSingleActionSet(XrActionSet)` - Sync OpenXR action set
 - `getActionFloat(XrAction, XrPath) f32` - Get analog input (trigger, grip)
+- `getActionVector2(XrAction, XrPath) XrVector2f` - Get 2D input (thumbstick, trackpad)
 - `getActionBooleanClicked(XrAction, XrPath) bool` - Get button click event
+- `getPlaySpaceOffset() XrPosef` - Get current locomotion offset
+- `updatePlaySpaceOffset(XrPosef) !void` - Update locomotion offset
 
 ### Refresh Rate
 - `loadRefreshRateExtension() bool` - Load Meta Quest refresh rate extension
@@ -379,7 +460,8 @@ Contributions are welcome! Please ensure:
 ## Links
 
 - [rlOpenXR Original (C++)](https://github.com/FireFlyForLife/rlOpenXR)
-- [openxr-zig](https://github.com/s-ol/openxr-zig)
+- [openxr-zig](https://github.com/s-ol/openxr-zig) - OpenXR binding generator for Zig
+- [ZigAndroidTemplate](https://github.com/ikskuh/ZigAndroidTemplate) - Template for Android apps in Zig
 - [raylib](https://www.raylib.com/)
 - [OpenXR Specification](https://www.khronos.org/openxr/)
 - [Zig Programming Language](https://ziglang.org/)
